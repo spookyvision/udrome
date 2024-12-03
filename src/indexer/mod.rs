@@ -126,8 +126,10 @@ impl Indexer {
             let mut entries = Vec::with_capacity(io_par);
 
             loop {
-                // TODO according to docs this shouldn't return 0 when limit (io_par) != 0
-                // but it apparently does?
+                if db_rx.is_closed() {
+                    warn!("FIXME: db channel has shut down");
+                    return;
+                }
                 let count = db_rx.recv_many(&mut entries, io_par).await;
                 if count > 0 {
                     debug!("received {count} entities, adding {}", entries.len());
@@ -169,8 +171,11 @@ impl Indexer {
             let mut quarantine = HashSet::<&str>::new();
             quarantine.extend(&["12 - Fragments of freedom.mp3"]);
             loop {
+                if indexer_rx.is_closed() {
+                    warn!("FIXME: indexer channel has shut down");
+                    return;
+                }
                 indexer_rx.recv_many(&mut entries, par).await;
-
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
                     .par_iter()

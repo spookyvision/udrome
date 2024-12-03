@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.93"
 axum = "0.7.9"
-axum-extra = { version = "0.9.6", features = ["async-read-body"] }
+axum-extra = { version = "0.9.6", features = ["async-read-body", "typed-header"] }
+axum-range = "0.4.0"
 camino = "1.1.9"
 clap = { version = "4.5.21", features = ["derive"] }
 id3 = "1.16.0"

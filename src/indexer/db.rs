@@ -34,7 +34,7 @@ impl DB {
     pub(super) async fn new(path: impl AsRef<Utf8Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         // TODO needed?
-        assert!(path.is_absolute());
+        // assert!(path.is_absolute());
 
         let db_url = format!("sqlite://{path}/udrome.sqlite?mode=rwc");
         debug!("database URL: {db_url}");
