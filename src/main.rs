@@ -15,6 +15,6 @@ async fn main() -> anyhow::Result<()> {
     ixr.run().await;
 
     let db = ixr.into_db();
-    serve(db).await;
+    serve(db, args.address).await;
     Ok(())
 }

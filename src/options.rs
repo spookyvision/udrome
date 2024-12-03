@@ -15,6 +15,10 @@ pub struct Args {
     pub db_path: PathBuf,
 
     /// Shall the indexer skip files with metadata?
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = false)]
     pub skip_tagged: bool,
+
+    /// Address to listen on
+    #[arg(short, long, default_value_t = String::from("localhost:3000"))]
+    pub address: String,
 }

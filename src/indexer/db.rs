@@ -5,12 +5,17 @@ use std::{
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait};
+use sea_orm::{
+    ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait, Order, QueryOrder,
+    QuerySelect,
+};
+use sea_orm_migration::MigratorTrait;
+use subsonic_types::request::search::Search3;
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
 
 use super::Metadata;
-use crate::entity::song;
+use crate::{entity::song, indexer::migration};
 pub type SongId = String;
 
 #[derive(Debug, Error)]
@@ -22,8 +27,6 @@ pub enum Error {
 }
 #[derive(Debug, Default)]
 pub struct DB {
-    scan_entries: Arc<RwLock<HashMap<Utf8PathBuf, Metadata>>>,
-    songs: Arc<RwLock<HashMap<SongId, Utf8PathBuf>>>,
     connection: DatabaseConnection,
 }
 
@@ -37,9 +40,13 @@ impl DB {
         debug!("database URL: {db_url}");
         let mut opts = ConnectOptions::new(db_url);
         opts.sqlx_logging(true)
-            .sqlx_logging_level(log::LevelFilter::Info);
+            .sqlx_logging_level(log::LevelFilter::Trace);
 
         let connection = Database::connect(opts).await?;
+        migration::Migrator::up(&connection, None).await?;
+        warn!("deleting all entries!");
+        let res = song::Entity::delete_many().exec(&connection).await;
+        debug!("{res:?}");
 
         Ok(Self {
             connection,
@@ -60,45 +67,31 @@ impl DB {
         }
         Ok(())
     }
-    pub fn add_song(&self, id: SongId, path: Utf8PathBuf) {
-        debug!("{id} => {path}");
-        let mut lock = self.songs.write().expect("rwb0rk");
-        lock.insert(id, path);
-    }
 
-    pub fn meta(&self, path: impl AsRef<Utf8Path>) -> Option<Metadata> {
-        let lock = self.scan_entries.read().expect("r0kb");
-        lock.get(path.as_ref()).cloned()
-    }
-
-    pub fn song(&self, id: &SongId) -> Option<Utf8PathBuf> {
-        let lock = self.songs.read().expect("rwb0rk");
-        lock.get(id).cloned()
-    }
-
-    pub async fn query_song(&self, id: i32) -> Result<Option<song::Model>, DbErr> {
-        Ok(song::Entity::find_by_id(id).one(&self.connection).await?)
-    }
-
-    pub fn for_each<F>(&self, mut f: F)
-    where
-        F: FnMut(&Utf8PathBuf, &Metadata),
-    {
-        let lock = self.scan_entries.read().expect("rwb0rk");
-
-        for (bof, met) in lock.iter() {
-            f(bof, met);
+    pub async fn query(&self, query: &Search3) -> Vec<song::Model> {
+        let mut res = vec![];
+        debug!("{query:?}");
+        match song::Entity::find()
+            .order_by(song::Column::Id, Order::Asc)
+            .limit(query.song_count.map(|sc| sc as u64))
+            .offset(query.song_offset.map(|so| so as u64))
+            .all(&self.connection)
+            .await
+        {
+            Ok(ents) => res = ents,
+            Err(e) => error!("{e}"),
         }
+        res
     }
-    pub(super) fn add(&self, file: Utf8PathBuf, md: Metadata) {
-        match self.scan_entries.write() {
-            Ok(mut eg) => {
-                // info!("ja nice {file} {:?} – {:?}", tag.artist(), tag.title());
-                eg.insert(file, md);
-            }
-            Err(e) => {
-                tracing::error!("X_X");
-            }
-        }
+    pub async fn get_song(&self, id: impl AsRef<str>) -> Option<song::Model> {
+        let Ok(id) = id.as_ref().parse::<i32>() else {
+            return None;
+        };
+        song::Entity::find_by_id(id)
+            .one(&self.connection)
+            .await
+            .inspect_err(|e| error!("{e:?}"))
+            .ok()
+            .flatten()
     }
 }

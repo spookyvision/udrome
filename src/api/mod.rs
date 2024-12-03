@@ -9,8 +9,8 @@ use axum::{
     http::{header::CONTENT_TYPE, Request, StatusCode, Uri},
     middleware::Next,
     response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
+    routing::get,
+    Router,
 };
 use axum_extra::body::AsyncReadBody;
 use id3::TagLike;
@@ -25,7 +25,7 @@ use subsonic_types::{
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 use tracing::{debug, error, info, Span};
 
-use crate::indexer::db::DB;
+use crate::{entity::song, indexer::db::DB};
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
 struct SR(SubsonicResponse);
@@ -36,7 +36,26 @@ impl IntoResponse for SR {
     }
 }
 
-pub async fn serve(db: Arc<DB>) {
+impl From<song::Model> for Child {
+    fn from(song: song::Model) -> Self {
+        let mut child = Child::default();
+        child.id = format!("{}", song.id);
+        child.path = Some(song.path);
+        child.parent = song.parent;
+        child.title = song.title;
+        child.album = song.album;
+        child.artist = song.artist;
+        child.track = song.track;
+        child.year = song.year;
+        child.genre = song.genre;
+        child.cover_art = song.cover_art;
+        child.size = song.size.map(|sz| sz.into());
+        child.content_type = song.content_type;
+        child
+    }
+}
+
+pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
     // build our application with a route
     let app = Router::new()
         .route(
@@ -47,13 +66,12 @@ pub async fn serve(db: Arc<DB>) {
             "/rest/stream.view",
             get(
                 |State(state_db): State<Arc<DB>>, query: Query<Stream>| async move {
-                    let Some(song_path) = state_db.song(&query.id) else {
+                    let Some(song) = state_db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
 
-                    debug!("try {song_path}");
-                    let file = match tokio::fs::File::open(song_path).await {
+                    let file = match tokio::fs::File::open(song.path).await {
                         Ok(file) => file,
                         Err(err) => {
                             return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)))
@@ -69,38 +87,14 @@ pub async fn serve(db: Arc<DB>) {
             "/rest/getSong.view",
             get(
                 |State(state_db): State<Arc<DB>>, query: Query<GetSong>| async move {
-                    let Some(path) = state_db.song(&query.id) else {
+                    let Some(song) = state_db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
 
-                    debug!("try {path}");
-
-                    let mut song = Child::default();
-
-                    song.id = query.id.clone();
-
-                    // TODO
-                    song.suffix = Some("mp3".to_string());
-                    song.path = Some(path.to_string());
-                    let fallback_title = "FIXME".to_string();
-                    if let Some(meta) = state_db.meta(&path) {
-                        match &meta.tag {
-                            Some(tag) => {
-                                song.artist = tag.artist().map(str::to_string);
-                                song.title =
-                                    tag.title().map(str::to_string).unwrap_or(fallback_title);
-                            }
-
-                            None => {
-                                song.title = fallback_title;
-                            }
-                        }
-                    }
-
                     Ok(SR(SubsonicResponse::ok(
                         Version::V1_13_0,
-                        ResponseBody::Song(song),
+                        ResponseBody::Song(song.into()),
                     )))
                 },
             ),
@@ -109,56 +103,13 @@ pub async fn serve(db: Arc<DB>) {
             "/rest/search3.view",
             get(
                 |State(state_db): State<Arc<DB>>, query: Query<Search3>| async move {
-                    // debug!("{query:?}");
-                    let mut artists = vec![];
-                    let mut albums = vec![];
-                    let mut songs = vec![];
-                    let mut album_id = 1;
-                    let mut artist_id = 1;
-                    let mut song_id = 1;
-                    state_db.for_each(|path, meta| {
-                        let mut artist = ArtistID3::default();
-                        artist.id = format!("ar-{artist_id}");
-                        let mut album = AlbumID3::default();
-                        album.id = format!("al-{album_id}");
-                        let mut song = Child::default();
-
-                        song.id = format!("s-{song_id}");
-
-                        // TODO
-                        song.suffix = Some("mp3".to_string());
-                        song.path = Some(path.to_string());
-                        let fallback_title = path
-                            .components()
-                            .last()
-                            .map(|c| c.to_string())
-                            .unwrap_or("BROKEN".to_string());
-                        match &meta.tag {
-                            Some(tag) => {
-                                song.artist = tag.artist().map(str::to_string);
-                                song.title =
-                                    tag.title().map(str::to_string).unwrap_or(fallback_title);
-                            }
-
-                            None => {
-                                song.title = fallback_title;
-                            }
-                        }
-
-                        songs.push(song);
-                        debug!("songmax {:?}", query.song_count);
-
-                        album_id += 1;
-                        artist_id += 1;
-                        song_id += 1;
-                    });
-
+                    let songs = state_db.query(&query).await.into_iter().map(|m| m.into());
                     SR(SubsonicResponse::ok(
                         Version::V1_13_0,
                         ResponseBody::SearchResult3(SearchResult3 {
-                            artist: artists,
-                            album: albums,
-                            song: songs,
+                            artist: vec![],
+                            album: vec![],
+                            song: songs.collect(),
                         }),
                     ))
                 },
@@ -249,8 +200,7 @@ pub async fn serve(db: Arc<DB>) {
                 ),
         );
 
-    let addr = "localhost:3000";
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr.as_ref()).await.unwrap();
     info!("Running on {}", listener.local_addr().unwrap());
 
     // TODO figure out how exactly the shutdown handling is supposed to work,

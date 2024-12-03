@@ -7,6 +7,8 @@ pub struct Model {
     #[sea_orm(primary_key)]
     #[serde(skip_deserializing)]
     pub id: i32,
+    // TODO can we use (Utf8)PathBuf?
+    pub path: String,
     pub parent: Option<String>,
     pub title: String,
     pub album: Option<String>,
@@ -15,7 +17,7 @@ pub struct Model {
     pub year: Option<u32>,
     pub genre: Option<String>,
     pub cover_art: Option<String>,
-    pub size: Option<u64>,
+    pub size: Option<u32>,
     pub content_type: Option<String>,
 }
 

@@ -18,6 +18,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::{entity::song, load, options::Args, FileVisitor};
 
+mod migration;
 #[derive(Debug, Clone)]
 pub struct Metadata {
     pub tag: Option<Tag>,
@@ -67,7 +68,7 @@ impl IndexerResult {
             .tag()
             .map(|t| t.title())
             .flatten()
-            .unwrap_or(self.path.as_str())
+            .unwrap_or(self.path.file_name().expect("not a file?"))
             .to_string()
     }
 
@@ -114,11 +115,12 @@ impl Indexer {
             warn!("unable to determine available parallelism; defaulting to {DEFAULT_PAR}");
             DEFAULT_PAR
         });
-        info!("par {par}");
+        info!("gotta go this fast: {par}");
         let par = par.into();
         let (indexer_tx, mut indexer_rx) = mpsc::channel(par);
 
         // TODO assumes 100 is a good batch size for sql insertions, needs research
+        // maybe better to not batch at all so we can error on row level
         let io_par = 100;
         let (db_tx, mut db_rx) = mpsc::channel(io_par);
 
@@ -137,16 +139,20 @@ impl Indexer {
                         .iter()
                         .map(|info: &IndexerResult| {
                             let mime_type = mime_guess::from_path(&info.path);
+                            // TODO error handling
+                            let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
+
                             song::ActiveModel {
                                 // parent: todo!(),
                                 title: AV::Set(info.title()),
+                                path: AV::Set(info.path.to_string()),
                                 // album: todo!(),
                                 artist: AV::Set(info.artist()),
                                 // track: todo!(),
                                 // year: todo!(),
                                 // genre: todo!(),
                                 // cover_art: todo!(),
-                                size: AV::Set(info.size()),
+                                size: AV::Set(size),
                                 content_type: AV::Set(
                                     mime_type.first().map(|inner| inner.to_string()),
                                 ),
