@@ -115,9 +115,9 @@ impl Indexer {
 
         let (indexer_tx, mut indexer_rx) = mpsc::channel(par);
 
-        // TODO assumes 100 is a good batch size for sql insertions, needs research
+        // TODO assumes 50 is a good batch size for sql insertions, needs research
         // maybe better to not batch at all so we can error on row level
-        let io_par = 100;
+        let io_par = 50;
         let (db_tx, mut db_rx) = mpsc::channel(io_par);
 
         let db = self.db.clone();
