@@ -3,7 +3,7 @@
 
 ## pronounciation
 - microdrome (metric)
-- 2.54e-6drome (imperial)
+- 2.54e-6drome (imperial and/or research chemist)
 - ghoti (contrarian)
 
 ## running
