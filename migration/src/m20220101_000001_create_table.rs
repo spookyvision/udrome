@@ -12,6 +12,7 @@ impl MigrationTrait for Migration {
                     .table(Song::Table)
                     .if_not_exists()
                     .col(pk_auto(Song::Id))
+                    .col(string(Song::Path))
                     .col(string_null(Song::Parent))
                     .col(string(Song::Title))
                     .col(string_null(Song::Album))
@@ -38,6 +39,7 @@ impl MigrationTrait for Migration {
 enum Song {
     Table,
     Id,
+    Path,
     Parent,
     Title,
     Album,
