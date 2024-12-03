@@ -43,9 +43,15 @@ struct Visitor {
 }
 
 impl FileVisitor for Visitor {
-    async fn visit(&mut self, entry: impl AsRef<Utf8Path>) {
-        if let Err(e) = self.tx.send(entry.as_ref().to_owned()).await {
-            error!("queue error: {e:?}")
+    fn visit(
+        &mut self,
+        entry: impl AsRef<Utf8Path>,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        let entry = entry.as_ref().to_owned();
+        async {
+            if let Err(e) = self.tx.send(entry).await {
+                error!("queue error: {e:?}")
+            }
         }
     }
 }

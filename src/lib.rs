@@ -16,7 +16,10 @@ pub mod entity;
 
 pub mod options;
 pub trait FileVisitor: Clone {
-    async fn visit(&mut self, entry: impl AsRef<Utf8Path>);
+    fn visit(
+        &mut self,
+        entry: impl AsRef<Utf8Path>,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
 // TODO not parallel enough!!!
