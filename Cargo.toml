@@ -1,0 +1,24 @@
+[package]
+name = "udrome"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+axum = "0.7.9"
+axum-extra = { version = "0.9.6", features = ["async-read-body"] }
+camino = "1.1.9"
+clap = { version = "4.5.21", features = ["derive"] }
+id3 = "1.16.0"
+quick-xml = { version = "0.37.1", features = ["async-tokio", "serde", "serialize", "tokio"] }
+rayon = "1.10.0"
+sea-orm = { version = "1.1.2", features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+subsonic-types = "0.2.0"
+thiserror = "2.0.3"
+tokio = { version = "1.41.1", features = ["full"] }
+tower-http = { version = "0.6.2", features = ["trace"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+walkdir = "2.5.0"
