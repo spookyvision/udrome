@@ -1469,6 +1469,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mp3-duration"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "348bdc7300502f0801e5b57c448815713cd843b744ef9bda252a2698fdf90a0f"
+dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "multer"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3120,6 +3129,7 @@ dependencies = [
  "id3",
  "log",
  "mime_guess",
+ "mp3-duration",
  "quick-xml 0.37.1",
  "rayon",
  "sea-orm",

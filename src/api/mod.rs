@@ -12,10 +12,11 @@ use axum::{
     routing::get,
     Router,
 };
-use axum_extra::body::AsyncReadBody;
+use axum_extra::{body::AsyncReadBody, headers::Range, TypedHeader};
+use axum_range::{KnownSize, Ranged};
 use id3::TagLike;
 use subsonic_types::{
-    common::Version,
+    common::{Seconds, Version},
     request::{browsing::GetSong, retrieval::Stream, search::Search3},
     response::{
         AlbumID3, AlbumList2, ArtistID3, ArtistsID3, Child, IndexID3, MusicFolder, MusicFolders,
@@ -46,6 +47,7 @@ impl From<song::Model> for Child {
         child.album = song.album;
         child.artist = song.artist;
         child.track = song.track;
+        child.duration = song.duration.map(|d| Seconds::new(d as _));
         child.year = song.year;
         child.genre = song.genre;
         child.cover_art = song.cover_art;
@@ -65,21 +67,25 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/rest/stream.view",
             get(
-                |State(state_db): State<Arc<DB>>, query: Query<Stream>| async move {
+                |State(state_db): State<Arc<DB>>,
+                 range: Option<TypedHeader<Range>>,
+                 query: Query<Stream>| async move {
                     let Some(song) = state_db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
-
+                    debug!("yeah {song:?}");
                     let file = match tokio::fs::File::open(song.path).await {
                         Ok(file) => file,
                         Err(err) => {
                             return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)))
                         }
                     };
+                    let body = KnownSize::file(file).await.unwrap();
+                    let range = range.map(|TypedHeader(range)| range);
+                    let ranged = Ranged::new(range, body);
                     let headers = [(CONTENT_TYPE, "audio/mpeg")];
-                    let body = AsyncReadBody::new(file);
-                    Ok((headers, body))
+                    Ok((headers, ranged))
                 },
             ),
         )

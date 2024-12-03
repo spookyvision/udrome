@@ -12,12 +12,13 @@ impl MigrationTrait for Migration {
                     .table(Song::Table)
                     .if_not_exists()
                     .col(pk_auto(Song::Id))
-                    .col(string(Song::Path))
+                    .col(string_uniq(Song::Path))
                     .col(string_null(Song::Parent))
                     .col(string(Song::Title))
                     .col(string_null(Song::Album))
                     .col(string_null(Song::Artist))
                     .col(integer_null(Song::Track))
+                    .col(integer_null(Song::Duration))
                     .col(integer_null(Song::Year))
                     .col(string_null(Song::Genre))
                     .col(string_null(Song::CoverArt))
@@ -45,6 +46,7 @@ enum Song {
     Album,
     Artist,
     Track,
+    Duration,
     Year,
     Genre,
     CoverArt,

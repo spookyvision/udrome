@@ -14,6 +14,7 @@ pub struct Model {
     pub album: Option<String>,
     pub artist: Option<String>,
     pub track: Option<u32>,
+    pub duration: Option<u32>,
     pub year: Option<u32>,
     pub genre: Option<String>,
     pub cover_art: Option<String>,

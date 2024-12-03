@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, RwLock},
-};
-
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use sea_orm::{
     ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait, Order, QueryOrder,
     QuerySelect,
@@ -14,7 +8,6 @@ use subsonic_types::request::search::Search3;
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
 
-use super::Metadata;
 use crate::{entity::song, indexer::migration};
 pub type SongId = String;
 
@@ -44,9 +37,12 @@ impl DB {
 
         let connection = Database::connect(opts).await?;
         migration::Migrator::up(&connection, None).await?;
-        warn!("deleting all entries!");
-        let res = song::Entity::delete_many().exec(&connection).await;
-        debug!("{res:?}");
+        let wipe = false;
+        if wipe {
+            warn!("deleting all entries!");
+            let res = song::Entity::delete_many().exec(&connection).await;
+            debug!("{res:?}");
+        }
 
         Ok(Self {
             connection,
@@ -68,6 +64,13 @@ impl DB {
         Ok(())
     }
 
+    pub async fn all_songs(&self) -> Vec<song::Model> {
+        song::Entity::find()
+            .all(&self.connection)
+            .await
+            .unwrap_or(vec![])
+    }
+
     pub async fn query(&self, query: &Search3) -> Vec<song::Model> {
         let mut res = vec![];
         debug!("{query:?}");
@@ -83,6 +86,7 @@ impl DB {
         }
         res
     }
+
     pub async fn get_song(&self, id: impl AsRef<str>) -> Option<song::Model> {
         let Ok(id) = id.as_ref().parse::<i32>() else {
             return None;

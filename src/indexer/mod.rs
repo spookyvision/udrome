@@ -1,15 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet},
-    num::NonZero,
-    os::unix::fs::MetadataExt,
-    sync::{Arc, RwLock},
+    collections::HashSet, num::NonZero, os::unix::fs::MetadataExt, sync::Arc, time::Duration,
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
 use db::DB;
 use id3::{Tag, TagLike};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sea_orm::{ActiveModelBehavior, ActiveValue as AV};
+use sea_orm::ActiveValue as AV;
 use tokio::{
     spawn,
     sync::mpsc::{self, Sender},
@@ -84,6 +81,9 @@ impl IndexerResult {
     fn size(&self) -> Option<u64> {
         std::fs::metadata(&self.path).ok().map(|md| md.size())
     }
+    fn duration(&self) -> Option<Duration> {
+        mp3_duration::from_path(&self.path).ok()
+    }
 }
 pub struct Indexer {
     root: Utf8PathBuf,
@@ -113,7 +113,7 @@ impl Indexer {
         info!("gotta go this fast: {par}");
         let par = par.into();
 
-        let (indexer_tx, mut indexer_rx) = mpsc::channel(par);
+        let (indexer_tx, mut indexer_rx) = mpsc::channel::<Utf8PathBuf>(par);
 
         // TODO assumes 100 is a good batch size for sql insertions, needs research
         // maybe better to not batch at all so we can error on row level
@@ -121,6 +121,10 @@ impl Indexer {
         let (db_tx, mut db_rx) = mpsc::channel(io_par);
 
         let db = self.db.clone();
+
+        let everything = self.db.all_songs().await;
+        let mut known = HashSet::new();
+        known.extend(everything.into_iter().map(|song| song.path));
 
         spawn(async move {
             let mut entries = Vec::with_capacity(io_par);
@@ -146,6 +150,7 @@ impl Indexer {
                                 // album: todo!(),
                                 artist: AV::Set(info.artist()),
                                 // track: todo!(),
+                                duration: AV::Set(info.duration().map(|d| d.as_secs() as u32)),
                                 // year: todo!(),
                                 // genre: todo!(),
                                 // cover_art: todo!(),
@@ -179,6 +184,7 @@ impl Indexer {
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
                     .par_iter()
+                    .filter(|entry| !known.contains(entry.as_str()))
                     .map(|path: &Utf8PathBuf| {
                         trace!("processing {path} {:?}", path.file_name());
                         let meta = if quarantine.contains(path.file_name().expect("no file name?!"))
