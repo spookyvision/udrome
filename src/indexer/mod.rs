@@ -175,6 +175,7 @@ impl Indexer {
                             Ok(tag) => tag.into(),
                             Err(_) => Metadata { tag: None },
                         };
+                        trace!("done: {path}");
                         IndexerResult {
                             path: path.to_owned(),
                             meta,
