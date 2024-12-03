@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let ixr = Indexer::new(&args).await?;
     ixr.run().await;
 
-    let db = ixr.into_db();
+    let db = ixr.db();
     serve(db, args.address).await;
     Ok(())
 }

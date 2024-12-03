@@ -99,14 +99,8 @@ impl Indexer {
             db: Arc::new(DB::new(&db_path).await?),
         })
     }
-    pub fn into_db(self) -> Arc<DB> {
-        let mut db = self.db;
-        // let mut song_id = 1;
-        // db.for_each(|path, _meta| {
-        //     db.add_song(format!("s-{song_id}"), path.clone());
-        //     song_id += 1;
-        // });
-        db
+    pub fn db(&self) -> Arc<DB> {
+        self.db.clone()
     }
     pub async fn run(&self) {
         // SAFETY: 4 is non zero
@@ -141,7 +135,6 @@ impl Indexer {
                             let mime_type = mime_guess::from_path(&info.path);
                             // TODO error handling
                             let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
-
                             song::ActiveModel {
                                 // parent: todo!(),
                                 title: AV::Set(info.title()),
