@@ -17,7 +17,11 @@ use axum_range::{KnownSize, Ranged};
 use id3::TagLike;
 use subsonic_types::{
     common::{Seconds, Version},
-    request::{browsing::GetSong, retrieval::Stream, search::Search3},
+    request::{
+        browsing::GetSong,
+        retrieval::{GetCoverArt, Stream},
+        search::Search3,
+    },
     response::{
         AlbumID3, AlbumList2, ArtistID3, ArtistsID3, Child, IndexID3, MusicFolder, MusicFolders,
         Playlist, Playlists, Response as SubsonicResponse, ResponseBody, SearchResult3,
@@ -65,6 +69,29 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
             get(|| async { "when I grow up I'll be a landing page" }),
         )
         .route(
+            "/rest/getCoverArt.view",
+            get(
+                |State(state_db): State<Arc<DB>>, query: Query<GetCoverArt>| async move {
+                    let Some(cover_art) = state_db.get_cover_art(&query.id).await else {
+                        error!("cannot find {}", query.id);
+                        return Err((StatusCode::NOT_FOUND, "404".to_string()));
+                    };
+
+                    let file = match tokio::fs::File::open(cover_art.path(state_db.data_path()))
+                        .await
+                    {
+                        Ok(file) => file,
+                        Err(err) => {
+                            return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)))
+                        }
+                    };
+                    let headers = [(CONTENT_TYPE, cover_art.mime_type)];
+                    let body = AsyncReadBody::new(file);
+                    Ok((headers, body))
+                },
+            ),
+        )
+        .route(
             "/rest/stream.view",
             get(
                 |State(state_db): State<Arc<DB>>,
@@ -74,7 +101,7 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
-                    debug!("yeah {song:?}");
+                    debug!("streaming {song:?}");
                     let file = match tokio::fs::File::open(song.path).await {
                         Ok(file) => file,
                         Err(err) => {
@@ -93,7 +120,7 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
             "/rest/getSong.view",
             get(
                 |State(state_db): State<Arc<DB>>, query: Query<GetSong>| async move {
-                    let Some(song) = state_db.get_song(&query.id).await else {
+                    let Some(mut song) = state_db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };

@@ -20,6 +20,7 @@ quick-xml = { version = "0.37.1", features = [
     "serialize",
     "tokio",
 ] }
+rand = "0.8.5"
 rayon = "1.10.0"
 sea-orm = { version = "1.1.2", features = [
     "runtime-tokio-rustls",

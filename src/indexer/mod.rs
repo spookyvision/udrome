@@ -4,16 +4,23 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use db::DB;
-use id3::{Tag, TagLike};
+use id3::{frame::Picture, Tag, TagLike};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sea_orm::ActiveValue as AV;
+use sea_orm::{ActiveValue as AV, EntityTrait, InsertResult};
 use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
     spawn,
     sync::mpsc::{self, Sender},
 };
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{entity::song, load, options::Args, FileVisitor};
+use crate::{
+    entity::{cover_art, song},
+    load,
+    options::Args,
+    FileVisitor,
+};
 
 mod migration;
 #[derive(Debug, Clone)]
@@ -84,9 +91,15 @@ impl IndexerResult {
     fn duration(&self) -> Option<Duration> {
         mp3_duration::from_path(&self.path).ok()
     }
+    pub fn pictures(&self) -> Vec<&Picture> {
+        self.meta
+            .tag()
+            .map(|t| t.pictures().collect::<Vec<_>>())
+            .unwrap_or_default()
+    }
 }
 pub struct Indexer {
-    root: Utf8PathBuf,
+    media_path: Utf8PathBuf,
     db: Arc<DB>,
     skip_tagged: bool,
 }
@@ -95,7 +108,7 @@ impl Indexer {
         let media_path = Utf8Path::from_path(&args.media_path).expect("media path error");
         let db_path = Utf8Path::from_path(&args.db_path).expect("db path error");
         Ok(Indexer {
-            root: media_path.to_owned(),
+            media_path: media_path.to_owned(),
             skip_tagged: args.skip_tagged,
             db: Arc::new(DB::new(&db_path).await?),
         })
@@ -118,7 +131,7 @@ impl Indexer {
         // TODO assumes 100 is a good batch size for sql insertions, needs research
         // maybe better to not batch at all so we can error on row level
         let io_par = 100;
-        let (db_tx, mut db_rx) = mpsc::channel(io_par);
+        let (db_tx, mut db_rx) = mpsc::channel::<IndexerResult>(io_par);
 
         let db = self.db.clone();
 
@@ -135,38 +148,77 @@ impl Indexer {
                     return;
                 }
                 let count = db_rx.recv_many(&mut entries, io_par).await;
-                if count > 0 {
-                    debug!("received {count} entities, adding {}", entries.len());
-                    let entities: Vec<_> = entries
-                        .iter()
-                        .map(|info: &IndexerResult| {
-                            let mime_type = mime_guess::from_path(&info.path);
-                            // TODO error handling
-                            let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
-                            song::ActiveModel {
-                                // parent: todo!(),
-                                title: AV::Set(info.title()),
-                                path: AV::Set(info.path.to_string()),
-                                // album: todo!(),
-                                artist: AV::Set(info.artist()),
-                                // track: todo!(),
-                                duration: AV::Set(info.duration().map(|d| d.as_secs() as u32)),
-                                // year: todo!(),
-                                // genre: todo!(),
-                                // cover_art: todo!(),
-                                size: AV::Set(size),
-                                content_type: AV::Set(
-                                    mime_type.first().map(|inner| inner.to_string()),
-                                ),
-                                ..Default::default()
+                for info in &entries {
+                    {
+                        let mime_type = mime_guess::from_path(&info.path);
+                        // TODO error handling
+                        let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
+
+                        // TODO transaction
+
+                        let song = song::ActiveModel {
+                            // parent: todo!(),
+                            title: AV::Set(info.title()),
+                            path: AV::Set(info.path.to_string()),
+                            // album: todo!(),
+                            artist: AV::Set(info.artist()),
+                            // track: todo!(),
+                            duration: AV::Set(info.duration().map(|d| d.as_secs() as u32)),
+                            // year: todo!(),
+                            // genre: todo!(),
+                            // cover_art: todo!(),
+                            size: AV::Set(size),
+                            content_type: AV::Set(mime_type.first().map(|inner| inner.to_string())),
+                            ..Default::default()
+                        };
+
+                        let song_id = match song::Entity::insert(song).exec(db.connection()).await {
+                            Ok(inner_res) => Some(inner_res.last_insert_id),
+                            Err(e) => {
+                                trace!("inserting song: {e}");
+                                None
                             }
-                        })
-                        .collect();
-                    if let Err(e) = db.add_all(entities).await {
-                        error!("updating database: {e}");
+                        };
+
+                        if let Some(song_id) = song_id {
+                            let pictures = info.pictures();
+                            if !pictures.is_empty() {
+                                let pic = pictures[0];
+
+                                // 512 shards ought to be enough for anybody
+                                let shard = (rand::random::<u32>() % 512) as _;
+                                let cover_art = cover_art::ActiveModel {
+                                    shard: AV::Set(shard as _),
+                                    mime_type: AV::Set(pic.mime_type.clone()),
+                                    song: AV::Set(song_id),
+                                    ..Default::default()
+                                };
+
+                                match cover_art::Entity::insert(cover_art)
+                                    .exec(db.connection())
+                                    .await
+                                {
+                                    Ok(res) => {
+                                        let data_path = db.data_path();
+                                        if let Err(e) = cover_art::Model::write(
+                                            &pic.data,
+                                            res.last_insert_id,
+                                            shard,
+                                            data_path,
+                                        )
+                                        .await
+                                        {
+                                            error!("writing cover art: {e}");
+                                        }
+                                    }
+                                    Err(e) => trace!("inserting cover art: {e}"),
+                                }
+                            }
+                        }
                     }
-                    entries.clear();
                 }
+
+                entries.clear();
             }
         });
 
@@ -218,7 +270,7 @@ impl Indexer {
 
         let count = Default::default();
         debug!("indexer::start");
-        load(&self.root, visitor, &count).await;
+        load(&self.media_path, visitor, &count).await;
         debug!("indexer::finish");
     }
 }

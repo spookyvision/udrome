@@ -3131,6 +3131,7 @@ dependencies = [
  "mime_guess",
  "mp3-duration",
  "quick-xml 0.37.1",
+ "rand",
  "rayon",
  "sea-orm",
  "sea-orm-migration",

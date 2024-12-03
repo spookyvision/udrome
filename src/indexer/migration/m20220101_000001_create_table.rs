@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(DeriveIden)]
-enum Song {
+pub(super) enum Song {
     Table,
     Id,
     Path,
