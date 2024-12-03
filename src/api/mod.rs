@@ -25,7 +25,7 @@ use subsonic_types::{
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 use tracing::{debug, error, info, Span};
 
-use crate::indexer::DB;
+use crate::indexer::db::DB;
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
 struct SR(SubsonicResponse);
@@ -36,25 +36,6 @@ impl IntoResponse for SR {
     }
 }
 
-/*
-
-
-let Some(song_path) = state_db.song(&query.id) else {
-                        error!("cannot find {}", query.id);
-                        return Err((StatusCode::NOT_FOUND, "404".to_string()));
-                    };
-
-                    debug!("try {song_path}");
-                    let file = match tokio::fs::File::open(song_path).await {
-                        Ok(file) => file,
-                        Err(err) => {
-                            return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)))
-                        }
-                    };
-                    let headers = [(CONTENT_TYPE, "audio/mpeg")];
-                    let body = AsyncReadBody::new(file);
-                    Ok((headers, body))
-*/
 pub async fn serve(db: Arc<DB>) {
     // build our application with a route
     let app = Router::new()
@@ -255,11 +236,11 @@ pub async fn serve(db: Arc<DB>) {
                     debug!("{} {}", req.method(), req.uri());
                 })
                 .on_response(|response: &Response, _latency: Duration, _span: &Span| {
-                    debug!("{response:?}");
-                    debug!(
-                        "{:?}",
-                        response.extensions().get::<RequestUri>().map(|r| &r.0)
-                    )
+                    // debug!("{response:?}");
+                    // debug!(
+                    //     "{:?}",
+                    //     response.extensions().get::<RequestUri>().map(|r| &r.0)
+                    // )
                 })
                 .on_failure(
                     |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {

@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
     let args = options::Args::parse();
     debug!("{args:?}");
 
-    let ixr = Indexer::new(&args);
+    let ixr = Indexer::new(&args).await?;
     ixr.run().await;
 
     let db = ixr.into_db();

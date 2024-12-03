@@ -10,6 +10,8 @@ axum-extra = { version = "0.9.6", features = ["async-read-body"] }
 camino = "1.1.9"
 clap = { version = "4.5.21", features = ["derive"] }
 id3 = "1.16.0"
+log = "0.4.22"
+mime_guess = "2.0.5"
 quick-xml = { version = "0.37.1", features = ["async-tokio", "serde", "serialize", "tokio"] }
 rayon = "1.10.0"
 sea-orm = { version = "1.1.2", features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
