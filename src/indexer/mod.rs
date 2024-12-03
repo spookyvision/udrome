@@ -130,7 +130,7 @@ impl Indexer {
                 // but it apparently does?
                 let count = db_rx.recv_many(&mut entries, io_par).await;
                 if count > 0 {
-                    debug!("adding {count} entities");
+                    debug!("received {count} entities, adding {}", entries.len());
                     let entities: Vec<_> = entries
                         .iter()
                         .map(|info: &IndexerResult| {
@@ -158,6 +158,7 @@ impl Indexer {
                     if let Err(e) = db.add_all(entities).await {
                         error!("updating database: {e}");
                     }
+                    entries.clear();
                 }
             }
         });
