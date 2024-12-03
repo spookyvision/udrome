@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     num::NonZero,
     os::unix::fs::MetadataExt,
     sync::{Arc, RwLock},
@@ -52,6 +52,7 @@ impl FileVisitor for Visitor {
         async {
             if let Err(e) = self.tx.send(entry).await {
                 error!("queue error: {e:?}")
+                // panic!("queue error: {e:?}")
             }
         }
     }
@@ -111,6 +112,7 @@ impl Indexer {
         });
         info!("gotta go this fast: {par}");
         let par = par.into();
+
         let (indexer_tx, mut indexer_rx) = mpsc::channel(par);
 
         // TODO assumes 100 is a good batch size for sql insertions, needs research
@@ -163,6 +165,8 @@ impl Indexer {
         spawn(async move {
             let mut entries = Vec::with_capacity(par);
 
+            let mut quarantine = HashSet::<&str>::new();
+            quarantine.extend(&["12 - Fragments of freedom.mp3"]);
             loop {
                 indexer_rx.recv_many(&mut entries, par).await;
 
@@ -170,12 +174,18 @@ impl Indexer {
                 let mds: Vec<_> = entries
                     .par_iter()
                     .map(|path: &Utf8PathBuf| {
-                        trace!("processing {path}");
-                        let meta = match Tag::read_from_path(path) {
-                            Ok(tag) => tag.into(),
-                            Err(_) => Metadata { tag: None },
+                        trace!("processing {path} {:?}", path.file_name());
+                        let meta = if quarantine.contains(path.file_name().expect("no file name?!"))
+                        {
+                            warn!("quarantined: {path}");
+                            Metadata { tag: None }
+                        } else {
+                            match Tag::read_from_path(path) {
+                                Ok(tag) => tag.into(),
+                                Err(_) => Metadata { tag: None },
+                            }
                         };
-                        trace!("done: {path}");
+
                         IndexerResult {
                             path: path.to_owned(),
                             meta,

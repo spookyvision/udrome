@@ -39,7 +39,7 @@ impl DB {
         let db_url = format!("sqlite://{path}/udrome.sqlite?mode=rwc");
         debug!("database URL: {db_url}");
         let mut opts = ConnectOptions::new(db_url);
-        // opts.sqlx_logging(true)
+        opts.sqlx_logging(false);
         //     .sqlx_logging_level(log::LevelFilter::Trace);
 
         let connection = Database::connect(opts).await?;
