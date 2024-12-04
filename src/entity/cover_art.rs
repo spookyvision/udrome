@@ -17,9 +17,11 @@ pub struct Model {
 
 impl Model {
     pub fn path2(id: i32, shard: i32, root: &Utf8Path) -> Utf8PathBuf {
-        let mut path = root.join("artwork");
+        let mut path = root.join("data");
+        path.push("artwork");
         path.push(format!("{shard}"));
         path.push(format!("{id}"));
+        debug!("cover path {path}");
         path
     }
 
@@ -29,7 +31,7 @@ impl Model {
 
     pub async fn write(data: &[u8], id: i32, shard: i32, root: &Utf8Path) -> std::io::Result<()> {
         let path = Self::path2(id, shard, root);
-        let containing_dir = path.parent().expect("could not create parent path");
+        let containing_dir = path.parent().expect("could not create containing path");
         tokio::fs::create_dir_all(containing_dir).await?;
         debug!("write {path}");
         let mut file = File::create(path).await?;
