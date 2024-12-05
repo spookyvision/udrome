@@ -7,4 +7,4 @@
 - ghoti (contrarian)
 
 ## running
-`cargo run -- -m your_music_folder -d directory_for_db_file (-a bind_address)`
+`cargo run -- -m your_music_folder -d data_directory (-a bind_address)`
