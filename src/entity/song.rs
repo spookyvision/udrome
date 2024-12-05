@@ -26,3 +26,21 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
+
+#[derive(DeriveIden)]
+pub(crate) enum Song {
+    Table,
+    Id,
+    Path,
+    Parent,
+    Title,
+    Album,
+    Artist,
+    Track,
+    Duration,
+    Year,
+    Genre,
+    CoverArt,
+    Size,
+    ContentType,
+}

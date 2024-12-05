@@ -15,8 +15,9 @@ use axum::{
 use axum_extra::{body::AsyncReadBody, headers::Range, TypedHeader};
 use axum_range::{KnownSize, Ranged};
 use id3::TagLike;
+use serde::{Deserialize, Serialize};
 use subsonic_types::{
-    common::{Seconds, Version},
+    common::{Milliseconds, Seconds, Version},
     request::{
         browsing::GetSong,
         retrieval::{GetCoverArt, Stream},
@@ -28,7 +29,7 @@ use subsonic_types::{
     },
 };
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
-use tracing::{debug, error, info, Span};
+use tracing::{debug, error, info, warn, Span};
 
 use crate::{entity::song, indexer::db::DB};
 
@@ -39,6 +40,18 @@ impl IntoResponse for SR {
     fn into_response(self) -> Response {
         self.0.to_json().expect("bug").into_response()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Scrobble {
+    /// A string which uniquely identifies the file to scrobble.
+    #[serde(default)]
+    pub id: String, // fixed: this was Vec<String>
+    /// The time at which the song was listened to.
+    #[serde(default)]
+    pub time: Milliseconds, // fixed: this was Vec<Milliseconds>
+    /// Whether this is a "submission" or a "now playing" notification.
+    pub submission: Option<bool>,
 }
 
 impl From<song::Model> for Child {
@@ -67,6 +80,13 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/",
             get(|| async { "when I grow up I'll be a landing page" }),
+        )
+        .route(
+            "/rest/scrobble.view",
+            get(|query: Query<Scrobble>| async move {
+                debug!("TODO scrobble {query:?}");
+                SR(SubsonicResponse::ok(Version::LATEST, ResponseBody::Empty))
+            }),
         )
         .route(
             "/rest/getCoverArt.view",
@@ -237,7 +257,7 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
     info!("Running on {}", listener.local_addr().unwrap());
 
     // TODO figure out how exactly the shutdown handling is supposed to work,
-    // as it stands it leads to immediate shutdown
+    // as it stands adding it leads to immediate shutdown
     axum::serve(listener, app)
         // .with_graceful_shutdown(shutdown_signal())
         .await

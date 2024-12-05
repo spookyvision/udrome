@@ -26,7 +26,7 @@ pub trait FileVisitor: Clone {
 async fn load(parent: impl AsRef<Utf8Path>, mut action: impl FileVisitor, count: &AtomicU32) {
     let parent_path = parent.as_ref();
     for entry in WalkDir::new(parent_path) {
-        let val = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let val: u32 = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // TODO progress report
         if val % 100 == 0 {
             // info!("(load) {val}");

@@ -1,6 +1,6 @@
 use sea_orm_migration::{prelude::*, schema::*};
 
-use super::m20220101_000001_create_table::Song;
+use crate::entity::song::Song;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

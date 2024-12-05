@@ -1,5 +1,7 @@
 use sea_orm_migration::{prelude::*, schema::*};
 
+use crate::entity::song::Song;
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -34,22 +36,4 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(Song::Table).to_owned())
             .await
     }
-}
-
-#[derive(DeriveIden)]
-pub(super) enum Song {
-    Table,
-    Id,
-    Path,
-    Parent,
-    Title,
-    Album,
-    Artist,
-    Track,
-    Duration,
-    Year,
-    Genre,
-    CoverArt,
-    Size,
-    ContentType,
 }

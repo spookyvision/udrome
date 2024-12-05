@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait, Order,
-    QueryFilter, QueryOrder, QuerySelect,
+    prelude::Expr, sea_query::extension::postgres::PgExpr, ColumnTrait, Condition, ConnectOptions,
+    Database, DatabaseConnection, DbErr, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect,
 };
 use sea_orm_migration::MigratorTrait;
 use subsonic_types::request::search::Search3;
@@ -9,7 +9,10 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    entity::{cover_art, song},
+    entity::{
+        cover_art,
+        song::{self, Song},
+    },
     indexer::migration,
 };
 pub type SongId = String;
@@ -78,10 +81,30 @@ impl DB {
     pub async fn query(&self, query: &Search3) -> Vec<song::Model> {
         let mut res = vec![];
         debug!("{query:?}");
-        match song::Entity::find()
-            .order_by(song::Column::Id, Order::Asc)
+
+        // what the user was actually searching for
+        let user_query = query.query.replace("\"", "");
+
+        let mut filter = Condition::all();
+
+        let mut do_filter = false;
+        for word in user_query.split(" ") {
+            if !word.is_empty() {
+                do_filter = true;
+                filter = filter.add(song::Column::Title.contains(word));
+            }
+        }
+
+        let mut op = song::Entity::find();
+
+        if do_filter {
+            op = op.filter(filter);
+        }
+
+        match op
             .limit(query.song_count.map(|sc| sc as u64))
             .offset(query.song_offset.map(|so| so as u64))
+            .order_by(song::Column::Title, Order::Asc)
             .all(&self.connection)
             .await
         {
