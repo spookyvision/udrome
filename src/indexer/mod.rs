@@ -1,10 +1,9 @@
-use std::{
-    collections::HashSet, num::NonZero, os::unix::fs::MetadataExt, sync::Arc, time::Duration,
-};
+use std::{collections::HashSet, num::NonZero, sync::Arc, time::Duration};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use db::DB;
 use ffprobe::{metadata, Tag as FFProbeTag};
+use filesize::PathExt;
 use id3::{frame::Picture, Error, Tag as Id3Tag, TagLike};
 use mime_guess::{
     mime::{AUDIO, MPEG},
@@ -94,7 +93,7 @@ impl IndexerResult {
     }
 
     fn size(&self) -> Option<u64> {
-        std::fs::metadata(&self.path).ok().map(|md| md.size())
+        self.path.as_std_path().size_on_disk().ok()
     }
     fn duration(&self) -> Option<Duration> {
         mp3_duration::from_path(&self.path).ok()
@@ -112,6 +111,7 @@ pub struct Indexer {
     media_paths: Vec<Utf8PathBuf>,
     db: Arc<DB>,
     skip_tagged: bool,
+    dev: bool,
 }
 impl Indexer {
     pub async fn new(config: &Config) -> Result<Self, db::Error> {
@@ -119,6 +119,7 @@ impl Indexer {
             media_paths: config.media.paths.clone(),
             skip_tagged: false,
             db: Arc::new(DB::new(&config.system.data_path).await?),
+            dev: config.system.dev,
         })
     }
     pub fn db(&self) -> Arc<DB> {
@@ -143,7 +144,7 @@ impl Indexer {
 
         let db = self.db.clone();
 
-        let dev = true;
+        let dev = self.dev;
         let mut known = HashSet::new();
 
         if dev {

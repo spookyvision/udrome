@@ -11,6 +11,7 @@ axum-range = "0.4"
 camino = { version = "1", features = ["serde1"] }
 cors = "0.1.0"
 f = "0.2.0"
+filesize = "0.2.0"
 id3 = "1"
 log = "0.4"
 mime_guess = "2.0.5"

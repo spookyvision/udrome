@@ -4,6 +4,9 @@ data_path = "/tmp"
 # max cache size
 cache_mb = 512
 bind_addr = "localhost:3000"
+# this essentially disables the indexer. 
+# useful for quick restarts (and retaining song IDs for connected clients).
+dev = true
 
 [indexer]
 

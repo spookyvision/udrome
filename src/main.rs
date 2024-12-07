@@ -18,6 +18,6 @@ async fn main() -> anyhow::Result<()> {
     let db = ixr.db();
     spawn(async move { ixr.run().await });
 
-    serve(db, &config.system.bind_addr).await;
+    serve(db, &config).await;
     Ok(())
 }

@@ -11,6 +11,8 @@ use axum::{
 };
 use axum_extra::{body::AsyncReadBody, headers::Range, TypedHeader};
 use axum_range::{KnownSize, Ranged};
+use camino::{Utf8Path, Utf8PathBuf};
+use mime_guess::MimeGuess;
 use serde::{Deserialize, Serialize};
 use subsonic_types::{
     common::{Milliseconds, Seconds, Version},
@@ -31,7 +33,7 @@ use tower_http::{
 };
 use tracing::{debug, error, info, warn, Span};
 
-use crate::{entity::song, indexer::db::DB};
+use crate::{config::Config, entity::song, indexer::db::DB};
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
 struct SR(SubsonicResponse);
@@ -42,6 +44,12 @@ impl IntoResponse for SR {
     }
 }
 
+#[derive(Debug, Clone)]
+
+struct AppState {
+    db: Arc<DB>,
+    file_root: Utf8PathBuf,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Scrobble {
     /// A string which uniquely identifies the file to scrobble.
@@ -74,7 +82,26 @@ impl From<song::Model> for Child {
     }
 }
 
-pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
+async fn serve_frontend(state: State<AppState>, uri: Uri) -> impl IntoResponse {
+    let components = uri.path().split("/");
+    let path = components.fold(state.file_root.clone(), |acc, e| acc.join(e));
+    let mime_type = MimeGuess::from_path(path.as_std_path())
+        .first_or_octet_stream()
+        .to_string();
+
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(err) => {
+            return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)));
+        }
+    };
+
+    let headers = [(CONTENT_TYPE, mime_type)];
+    let body = AsyncReadBody::new(file);
+    Ok((headers, body))
+}
+
+pub async fn serve(db: Arc<DB>, config: &Config) {
     let cors = CorsLayer::new()
         // allow `GET` and `POST` when accessing the resource
         .allow_methods([Method::GET, Method::POST])
@@ -82,9 +109,19 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .allow_origin(cors::Any);
 
     let app = Router::new()
+        .fallback(serve_frontend)
         .route(
             "/",
-            get(|| async { "when I grow up I'll be a landing page" }),
+            get(|state| async {
+                serve_frontend(
+                    state,
+                    (Uri::builder()
+                        .path_and_query("/index.html")
+                        .build()
+                        .unwrap()),
+                )
+                .await
+            }),
         )
         .route(
             "/rest/scrobble.view",
@@ -96,13 +133,13 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/rest/getCoverArt.view",
             get(
-                |State(state_db): State<Arc<DB>>, query: Query<GetCoverArt>| async move {
-                    let Some(cover_art) = state_db.get_cover_art(&query.id).await else {
+                |State(state): State<AppState>, query: Query<GetCoverArt>| async move {
+                    let Some(cover_art) = state.db.get_cover_art(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
 
-                    let file = match tokio::fs::File::open(cover_art.path(state_db.data_path()))
+                    let file = match tokio::fs::File::open(cover_art.path(state.db.data_path()))
                         .await
                     {
                         Ok(file) => file,
@@ -119,10 +156,10 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/rest/stream.view",
             get(
-                |State(state_db): State<Arc<DB>>,
+                |State(state): State<AppState>,
                  range: Option<TypedHeader<Range>>,
                  query: Query<Stream>| async move {
-                    let Some(song) = state_db.get_song(&query.id).await else {
+                    let Some(song) = state.db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
@@ -144,8 +181,8 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/rest/getSong.view",
             get(
-                |State(state_db): State<Arc<DB>>, query: Query<GetSong>| async move {
-                    let Some(mut song) = state_db.get_song(&query.id).await else {
+                |State(state): State<AppState>, query: Query<GetSong>| async move {
+                    let Some(song) = state.db.get_song(&query.id).await else {
                         error!("cannot find {}", query.id);
                         return Err((StatusCode::NOT_FOUND, "404".to_string()));
                     };
@@ -160,8 +197,8 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         .route(
             "/rest/search3.view",
             get(
-                |State(state_db): State<Arc<DB>>, query: Query<Search3>| async move {
-                    let songs = state_db.query(&query).await.into_iter().map(|m| m.into());
+                |State(state): State<AppState>, query: Query<Search3>| async move {
+                    let songs = state.db.query(&query).await.into_iter().map(|m| m.into());
                     SR(SubsonicResponse::ok(
                         Version::V1_13_0,
                         ResponseBody::SearchResult3(SearchResult3 {
@@ -238,7 +275,10 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
                 ))
             }),
         )
-        .with_state(db)
+        .with_state(AppState {
+            db,
+            file_root: Utf8Path::new(&config.system.data_path).join("public"),
+        })
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|req: &Request<Body>, _span: &Span| {
@@ -259,7 +299,9 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
         )
         .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind(addr.as_ref()).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&config.system.bind_addr)
+        .await
+        .unwrap();
     info!("Running on {}", listener.local_addr().unwrap());
 
     // TODO figure out how exactly the shutdown handling is supposed to work,

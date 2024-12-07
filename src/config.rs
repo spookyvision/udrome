@@ -15,6 +15,7 @@ pub struct System {
     pub data_path: String,
     pub cache_mb: u16,
     pub bind_addr: String,
+    pub dev: bool,
 }
 
 #[derive(Deserialize)]
