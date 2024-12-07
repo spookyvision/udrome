@@ -1,0 +1,24 @@
+[system]
+# where udrome stores its database, plugins, album art, transcoded files, etc.
+data_path = "/tmp"
+# max cache size
+cache_mb = 512
+bind_addr = "localhost:3000"
+
+[indexer]
+
+[system.profiler]
+# TODO (tracing-tracy)
+
+[system.plugins]
+# TODO plugin system
+media = ["oggvorbis.rhai", "mod.rhai"]
+
+[media]
+paths = ["/Users/ace/tmp"]
+
+[media.exclude]
+# TODO
+files = ["12 - Fragments of freedom.mp3"]
+# TODO exclude dirs
+dirs = []

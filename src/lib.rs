@@ -14,7 +14,9 @@ pub mod api;
 
 pub mod entity;
 
-pub mod options;
+pub mod config;
+
+pub(crate) mod util;
 pub trait FileVisitor: Clone {
     fn visit(
         &mut self,

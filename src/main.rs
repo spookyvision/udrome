@@ -1,21 +1,23 @@
 use std::env;
 
 use camino::Utf8PathBuf;
-use clap::Parser;
 use tokio::spawn;
 use tracing::debug;
-use udrome::{api::serve, indexer::Indexer, options};
+use udrome::{
+    api::serve,
+    config::{self, Config},
+    indexer::Indexer,
+};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let args = options::Args::parse();
-    debug!("{args:?}");
+    let config = Config::new(env::args().nth(1))?;
 
-    let ixr = Indexer::new(&args).await?;
+    let ixr = Indexer::new(&config).await?;
     let db = ixr.db();
     spawn(async move { ixr.run().await });
 
-    serve(db, args.address).await;
+    serve(db, &config.system.bind_addr).await;
     Ok(())
 }

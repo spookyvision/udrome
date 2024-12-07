@@ -3,6 +3,7 @@
 - [ ] use string PKs?
 
 # features
+- [ ] album art: support 'folder' file
 - [ ] transcoding
 - [ ] web UI
 - [ ] accounts/admin
@@ -16,7 +17,6 @@
 - content adressable
     - cover art
     - songs?
-
 
 ## quality/safety
 - [ ] DB indexing

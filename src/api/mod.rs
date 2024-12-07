@@ -1,12 +1,9 @@
-use std::{
-    sync::{atomic::AtomicU32, Arc},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     body::Body,
     extract::{Query, State},
-    http::{header::CONTENT_TYPE, Request, StatusCode, Uri},
+    http::{header::CONTENT_TYPE, Method, Request, StatusCode, Uri},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::get,
@@ -14,7 +11,6 @@ use axum::{
 };
 use axum_extra::{body::AsyncReadBody, headers::Range, TypedHeader};
 use axum_range::{KnownSize, Ranged};
-use id3::TagLike;
 use serde::{Deserialize, Serialize};
 use subsonic_types::{
     common::{Milliseconds, Seconds, Version},
@@ -28,7 +24,11 @@ use subsonic_types::{
         Playlist, Playlists, Response as SubsonicResponse, ResponseBody, SearchResult3,
     },
 };
-use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
+use tower_http::{
+    classify::ServerErrorsFailureClass,
+    cors::{self, CorsLayer},
+    trace::TraceLayer,
+};
 use tracing::{debug, error, info, warn, Span};
 
 use crate::{entity::song, indexer::db::DB};
@@ -75,7 +75,12 @@ impl From<song::Model> for Child {
 }
 
 pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
-    // build our application with a route
+    let cors = CorsLayer::new()
+        // allow `GET` and `POST` when accessing the resource
+        .allow_methods([Method::GET, Method::POST])
+        // allow requests from any origin
+        .allow_origin(cors::Any);
+
     let app = Router::new()
         .route(
             "/",
@@ -251,7 +256,8 @@ pub async fn serve(db: Arc<DB>, addr: impl AsRef<str>) {
                         error!("{error:?}");
                     },
                 ),
-        );
+        )
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind(addr.as_ref()).await.unwrap();
     info!("Running on {}", listener.local_addr().unwrap());

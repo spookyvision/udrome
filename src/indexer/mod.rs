@@ -4,43 +4,33 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use db::DB;
-use id3::{frame::Picture, Tag, TagLike};
+use ffprobe::{metadata, Tag as FFProbeTag};
+use id3::{frame::Picture, Error, Tag as Id3Tag, TagLike};
+use mime_guess::{
+    mime::{AUDIO, MPEG},
+    Mime, MimeGuess,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sea_orm::{ActiveValue as AV, EntityTrait, InsertResult};
+use sea_orm::{ActiveValue as AV, EntityTrait};
 use tokio::{
-    fs::File,
-    io::AsyncWriteExt,
     spawn,
     sync::mpsc::{self, Sender},
 };
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
+    config::Config,
     entity::{cover_art, song},
     load,
-    options::Args,
+    util::{Pwn, Unpwn},
     FileVisitor,
 };
 
 mod migration;
-#[derive(Debug, Clone)]
-pub struct Metadata {
-    pub tag: Option<Tag>,
-}
-
-impl Metadata {
-    pub fn tag(&self) -> Option<&Tag> {
-        self.tag.as_ref()
-    }
-}
-
-impl From<Tag> for Metadata {
-    fn from(tag: Tag) -> Self {
-        Self { tag: Some(tag) }
-    }
-}
 
 pub mod db;
+
+mod ffprobe;
 
 #[derive(Clone)]
 struct Visitor {
@@ -62,27 +52,45 @@ impl FileVisitor for Visitor {
     }
 }
 
+#[derive(Debug, Clone)]
+enum Tag {
+    Ffprobe(FFProbeTag),
+    Id3(Id3Tag),
+}
+
+impl Tag {
+    fn title(&self) -> Option<&str> {
+        match self {
+            Tag::Ffprobe(tag) => Some(&tag.title),
+            Tag::Id3(tag) => tag.title(),
+        }
+    }
+
+    fn artist(&self) -> Option<&str> {
+        match self {
+            Tag::Ffprobe(tag) => tag.artist.unpwn(),
+            Tag::Id3(tag) => tag.artist(),
+        }
+    }
+}
+#[derive(Debug)]
 struct IndexerResult {
     path: Utf8PathBuf,
-    meta: Metadata,
+    tag: Option<Tag>,
+    mime_type: Option<Mime>,
 }
 
 impl IndexerResult {
-    fn title(&self) -> String {
-        self.meta
-            .tag()
+    fn title(&self) -> &str {
+        self.tag
+            .as_ref()
             .map(|t| t.title())
             .flatten()
             .unwrap_or(self.path.file_name().expect("not a file?"))
-            .to_string()
     }
 
-    fn artist(&self) -> Option<String> {
-        self.meta
-            .tag()
-            .map(|t| t.artist())
-            .flatten()
-            .map(|s| s.to_string())
+    fn artist(&self) -> Option<&str> {
+        self.tag.as_ref().map(|t| t.artist()).flatten()
     }
 
     fn size(&self) -> Option<u64> {
@@ -92,25 +100,25 @@ impl IndexerResult {
         mp3_duration::from_path(&self.path).ok()
     }
     pub fn pictures(&self) -> Vec<&Picture> {
-        self.meta
-            .tag()
-            .map(|t| t.pictures().collect::<Vec<_>>())
-            .unwrap_or_default()
+        // TODO use ffmpeg
+        // self.meta
+        //     .tag()
+        //     .map(|t| t.pictures().collect::<Vec<_>>())
+        //     .unwrap_or_default()
+        vec![]
     }
 }
 pub struct Indexer {
-    media_path: Utf8PathBuf,
+    media_paths: Vec<Utf8PathBuf>,
     db: Arc<DB>,
     skip_tagged: bool,
 }
 impl Indexer {
-    pub async fn new(args: &Args) -> Result<Self, db::Error> {
-        let media_path = Utf8Path::from_path(&args.media_path).expect("media path error");
-        let db_path = Utf8Path::from_path(&args.db_path).expect("db path error");
+    pub async fn new(config: &Config) -> Result<Self, db::Error> {
         Ok(Indexer {
-            media_path: media_path.to_owned(),
-            skip_tagged: args.skip_tagged,
-            db: Arc::new(DB::new(&db_path).await?),
+            media_paths: config.media.paths.clone(),
+            skip_tagged: false,
+            db: Arc::new(DB::new(&config.system.data_path).await?),
         })
     }
     pub fn db(&self) -> Arc<DB> {
@@ -135,9 +143,15 @@ impl Indexer {
 
         let db = self.db.clone();
 
-        let everything = self.db.all_songs().await;
+        let dev = true;
         let mut known = HashSet::new();
-        known.extend(everything.into_iter().map(|song| song.path));
+
+        if dev {
+            warn!("dev mode, skipping known-speedup!");
+        } else {
+            let everything = self.db.all_songs().await;
+            known.extend(everything.into_iter().map(|song| song.path));
+        }
 
         spawn(async move {
             let mut entries = Vec::with_capacity(io_par);
@@ -147,10 +161,11 @@ impl Indexer {
                     warn!("FIXME: db channel has shut down");
                     return;
                 }
-                let count = db_rx.recv_many(&mut entries, io_par).await;
+                let _count = db_rx.recv_many(&mut entries, io_par).await;
                 for info in &entries {
                     {
-                        let mime_type = mime_guess::from_path(&info.path);
+                        debug!("got {info:?}");
+
                         // TODO error handling
                         let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
 
@@ -158,17 +173,19 @@ impl Indexer {
 
                         let song = song::ActiveModel {
                             // parent: todo!(),
-                            title: AV::Set(info.title()),
+                            title: AV::Set(info.title().to_string()),
                             path: AV::Set(info.path.to_string()),
                             // album: todo!(),
-                            artist: AV::Set(info.artist()),
+                            artist: AV::Set(info.artist().to_pwned()),
                             // track: todo!(),
                             duration: AV::Set(info.duration().map(|d| d.as_secs() as u32)),
                             // year: todo!(),
                             // genre: todo!(),
                             // cover_art: todo!(),
                             size: AV::Set(size),
-                            content_type: AV::Set(mime_type.first().map(|inner| inner.to_string())),
+                            content_type: AV::Set(
+                                info.mime_type.as_ref().map(|inner| inner.to_string()),
+                            ),
                             ..Default::default()
                         };
 
@@ -233,35 +250,78 @@ impl Indexer {
                     return;
                 }
                 indexer_rx.recv_many(&mut entries, par).await;
+                debug!("workload {}", entries.len());
+
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
                     .par_iter()
                     .filter(|entry| !known.contains(entry.as_str()))
                     .map(|path: &Utf8PathBuf| {
                         trace!("processing {path} {:?}", path.file_name());
-                        let meta = if quarantine.contains(path.file_name().expect("no file name?!"))
-                        {
-                            warn!("quarantined: {path}");
-                            Metadata { tag: None }
-                        } else {
-                            match Tag::read_from_path(path) {
-                                Ok(tag) => tag.into(),
-                                Err(_) => Metadata { tag: None },
+                        let mime_type = mime_guess::from_path(path).first();
+
+                        let tag = match mime_type.as_ref().map(|m| (m.type_(), m.subtype())) {
+                            Some((AUDIO, MPEG)) => match Id3Tag::read_from_path(path) {
+                                Ok(tag) => Some(Tag::Id3(tag)),
+                                Err(e) if matches!(e.kind, id3::ErrorKind::NoTag) => None,
+                                Err(e) => {
+                                    warn!("error reading Id3: {e:?}");
+                                    None
+                                }
+                            },
+                            Some((t, s)) => {
+                                info!("{path} is not an mp3: {t}/{s} - using ffprobe");
+                                match metadata(path) {
+                                    Ok(md) => Some(Tag::Ffprobe(md.into_tag())),
+                                    // deser error means mostly either "no suitable metadata", which is ok, go `None` then
+                                    // or NonUtf8, which we still need to handle
+                                    Err(ffprobe::Error::Deser(e)) => {
+                                        warn!("TODO handle nonUtf8 {e:?}");
+                                        None
+                                    }
+                                    Err(e) => {
+                                        warn!("metadata error: {e}");
+                                        None
+                                    }
+                                }
+                            }
+                            // TODO DRY vs. Some() arm
+                            None => {
+                                warn!("could not determine mime type for {path}");
+                                match metadata(path) {
+                                    Ok(md) => Some(Tag::Ffprobe(md.into_tag())),
+                                    // deser error means mostly either "no suitable metadata", which is ok, go `None` then
+                                    // or NonUtf8, which we still need to handle
+                                    Err(ffprobe::Error::Deser(e)) => {
+                                        warn!("hmm {e:?}");
+                                        None
+                                    }
+                                    Err(e) => {
+                                        warn!("metadata error: {e}");
+                                        None
+                                    }
+                                }
                             }
                         };
 
                         IndexerResult {
                             path: path.to_owned(),
-                            meta,
+                            tag,
+                            mime_type,
                         }
                     })
                     .collect();
 
-                for md in mds {
-                    if let Err(e) = db_tx.send(md).await {
-                        warn!("tx error (OK on shutdown) {e}");
+                if dev {
+                    warn!("dev mode, skipping db!");
+                } else {
+                    for md in mds {
+                        if let Err(e) = db_tx.send(md).await {
+                            warn!("tx error (OK on shutdown) {e}");
+                        }
                     }
                 }
+
                 entries.clear();
             }
         });
@@ -270,7 +330,9 @@ impl Indexer {
 
         let count = Default::default();
         debug!("indexer::start");
-        load(&self.media_path, visitor, &count).await;
+        for path in &self.media_paths {
+            load(path, visitor.clone(), &count).await;
+        }
         debug!("indexer::finish");
     }
 }
