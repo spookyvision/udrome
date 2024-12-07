@@ -1,0 +1,3 @@
+#!/bin/sh
+./_tailwind
+fswatch src | xargs -n 1 ./_tailwind
