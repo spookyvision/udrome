@@ -7,14 +7,33 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dioxus = { version = "0.6.0-rc.0", features = ["router"] }
-dioxus-logger = "0.5"
+dioxus-sdk = { git = "https://github.com/DioxusLabs/sdk.git", rev = "765dcfe", features = [
+    "timing",
+] }
+dioxus = { version = "0.6", features = ["router"] }
+dioxus-logger = "0.6"
 futures = "0.3.31"
 reqwest = { version = "0.12.9", features = ["json"] }
 serde = { version = "1.0.215", features = ["derive"] }
 subsonic-types = "0.2.0"
 url = "2.5.4"
+wasm-bindgen = "0.2.99"
+web-sys = { version = "0.3.76", features = ["HtmlAudioElement", "Window"] }
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+dioxus-cli-config = { version = "0.6.0", features = ["web"] }
 
 [features]
 default = ["web"]
 web = ["dioxus/web"]
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

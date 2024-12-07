@@ -4,6 +4,7 @@ use dioxus_logger::tracing::Level;
 use views::{Blog, Home};
 
 mod components;
+mod sdk;
 mod views;
 
 #[derive(Debug, Clone, Routable, PartialEq)]

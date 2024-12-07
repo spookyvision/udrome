@@ -1,23 +1,26 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use dioxus::prelude::*;
+use dioxus_cli_config::is_cli_enabled;
 use dioxus_logger::tracing::{debug, error, info};
 use futures::StreamExt;
 use serde::Deserialize;
 use subsonic_types::{
     common::{Format, Version},
     request::{search::Search3, Authentication, Request as SRequest, SubsonicRequest},
-    response::{Response as SubsonicResponse, ResponseBody, SearchResult3},
+    response::{Child as Song, Response as SubsonicResponse},
 };
 use url::Url;
 
-use crate::components::SearchResult;
-
-const HEADER_SVG: Asset = asset!("/assets/header.svg");
+use crate::{
+    components::{Player, SearchResult},
+    sdk::debounce::use_debounce,
+};
 
 struct Paginator {
-    pos: u32,
+    offset: u32,
     size: u32,
+    search: Option<String>,
 }
 
 impl Default for Paginator {
@@ -27,19 +30,35 @@ impl Default for Paginator {
 }
 impl Paginator {
     fn new(size: u32) -> Self {
-        Self { pos: 0, size }
+        Self {
+            offset: 0,
+            size,
+            search: None,
+        }
     }
 
-    fn cur(&self) -> u32 {
-        self.pos
+    fn cur(&self) -> Page {
+        Page {
+            size: self.size,
+            offset: self.offset,
+            search: self.search.clone(),
+        }
     }
-    fn prev(&mut self) -> u32 {
-        self.pos = self.pos.saturating_sub(self.size);
-        self.pos
+    fn at(&mut self, at: u32) -> Page {
+        self.offset = at * self.size;
+        self.cur()
     }
-    fn next(&mut self) -> u32 {
-        self.pos = self.pos.saturating_add(self.size);
-        self.pos
+    fn prev(&mut self) -> Page {
+        self.offset = self.offset.saturating_sub(self.size);
+        self.cur()
+    }
+    fn next(&mut self) -> Page {
+        self.offset = self.offset.saturating_add(self.size);
+        self.cur()
+    }
+
+    fn set_search(&mut self, search: Option<String>) {
+        self.search = search;
     }
 }
 
@@ -50,23 +69,27 @@ struct SubsonicResponseOuter {
 }
 
 struct Request00r {
-    paginator: Paginator,
     base_url: String,
 }
 
+struct Page {
+    size: u32,
+    offset: u32,
+    search: Option<String>,
+}
+
 impl Request00r {
-    fn new(paginator: Paginator, base_url: impl AsRef<str>) -> Self {
+    fn new(base_url: impl AsRef<str>) -> Self {
         Self {
-            paginator,
             base_url: base_url.as_ref().to_string(),
         }
     }
 
-    fn cur(&self) -> Result<Url, url::ParseError> {
+    fn at(&self, page: u32, size: u32, query: Option<String>) -> Result<Url, url::ParseError> {
         let search = Search3 {
-            query: "".to_string(),
-            song_count: Some(self.paginator.size),
-            song_offset: Some(self.paginator.pos),
+            query: query.unwrap_or_default(),
+            song_count: Some(size),
+            song_offset: Some(page),
             music_folder_id: None,
             artist_count: None,
             artist_offset: None,
@@ -92,21 +115,55 @@ impl Request00r {
     }
 }
 
+enum Command {
+    Next,
+    Prev,
+    At(u32),
+}
 #[component]
 pub fn Udrome() -> Element {
+    let standalone = if is_cli_enabled() { "no" } else { "yes" };
     let mut response_state = use_signal(|| None);
-    let base_url = "http://localhost:3000";
-    let req = use_signal(|| Request00r::new(Paginator::default(), base_url));
-    // TODO error handling and/or (better?) assume always valid via validating base_url first
-    let tx = use_coroutine(move |mut rx| async move {
+    let mut paginator = use_signal(|| Paginator::default());
+    let mut song_url = use_signal(|| "".to_string());
+    let mut title = use_signal(|| "".to_string());
+    let mut search = use_signal(|| None);
+    let base_url = use_signal(|| {
+        option_env!("BACKEND_URL")
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| {
+                web_sys::window()
+                    .map(|win| win.location().origin().ok())
+                    .flatten()
+                    .expect("could not determine origin URL")
+            })
+    });
+
+    let mut debounce = use_debounce(Duration::from_millis(100), move |text: String| {
+        debug!("{text}");
+        let search_val = if !text.is_empty() {
+            Some(text.clone())
+        } else {
+            None
+        };
+        search.set(search_val);
+    });
+    let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| async move {
+        // TODO hardcoded lol
+        let req = Request00r::new(base_url.read().as_str());
+
         // Define your state before the loop
         let client = reqwest::Client::new();
         let mut cache: HashMap<Url, SubsonicResponse> = HashMap::new();
 
         loop {
             // Loop and wait for the next message
-            if let Some(url) = rx.next().await {
-                info!("felch {url}");
+            if let Some(page) = rx.next().await {
+                // TODO error handling and/or (better?) assume always valid via validating base_url first
+                let Ok(url) = req.at(page.offset, page.size, page.search) else {
+                    continue;
+                };
+
                 // Resolve the message
                 let response = if let Some(response) = cache.get(&url) {
                     response.clone()
@@ -115,7 +172,7 @@ pub fn Udrome() -> Element {
                         .get(url.clone())
                         .send()
                         .await
-                        .inspect_err(|e| error!("noes! {e:?}"))
+                        .inspect_err(|e| error!("oh nose {e:?}"))
                         .unwrap()
                         .json()
                         .await
@@ -131,30 +188,50 @@ pub fn Udrome() -> Element {
         }
     });
 
-    let first_req = Request00r::new(Paginator::default(), base_url)
-        .cur()
-        .unwrap();
-
     // Send a message to the coroutine
-    tx.send(first_req.clone());
-    // Get the current state of the coroutine
-    // let response = response_state.read();
-
-    // let dom = match response.as_ref().map(|res| &res.body) {
-    //     Some(ResponseBody::SearchResult3(res)) => rsx! {
-    //         ul {
-    //             for song in &res.song {
-    //                 li { "{song.title}" }
-    //             }
-    //         }
-    //     },
-    //     Some(_) => rsx! { "borked response" },
-    //     None => rsx! { "no response?" },
-    // };
+    let _ = use_resource(move || async move {
+        debug!("update");
+        paginator.write().set_search(search.read().clone());
+        tx.send(paginator.read().cur());
+    });
 
     rsx! {
-        div { id: "hero",
-            SearchResult { content: response_state }
+        div { id: "udrome",
+            div { class: "mx-auto px-4 fixed overflow-y-auto",
+                input {
+                    oninput: move |ev| {
+                        let text = ev.value();
+                        debounce.action(text);
+                    }
+                }
+                button {
+                    class: "btn",
+                    onclick: move |ev| {
+                        paginator.write().prev();
+                    },
+                    "prev"
+                }
+                button {
+                    class: "btn",
+                    onclick: move |ev| {
+                        paginator.write().next();
+                    },
+                    "next"
+                }
+                Player { url: song_url, title }
+                "standalone build: {standalone}"
+            }
+
+            SearchResult {
+                content: response_state,
+                onclick: move |song: Song| {
+                    to_owned!(base_url);
+                    let url = format!("{}/rest/stream.view?id={}", base_url, song.id);
+                    title.set(song.title);
+                    debug!("play {url}");
+                    song_url.set(url);
+                }
+            }
         }
     }
 }
