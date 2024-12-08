@@ -8,8 +8,8 @@ npm install
 ```
 
 ## Development
-In developer mode we're using a separate frontend server for hot reloading etc.
-Setting `dev=true` in `udrome.toml` sets up CORS to allow every request.
+In development mode we're using a separate frontend server for hot reloading etc.
+Setting `dev=true` in `udrome.toml` is required (it sets up CORS to allow any request).
 
 ```bash
 ./watch_tailwind & # compile tailwind in the background when things change
