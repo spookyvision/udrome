@@ -16,6 +16,7 @@ use crate::{
     sdk::debounce::use_debounce,
 };
 
+#[derive(Debug, PartialEq, Eq)]
 struct Paginator {
     offset: u32,
     max_offset: u32,
@@ -92,6 +93,7 @@ struct Request00r {
     base_url: String,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct Page {
     size: u32,
     offset: u32,
@@ -142,6 +144,7 @@ enum Command {
 }
 #[component]
 pub fn Udrome() -> Element {
+    debug!("rerender");
     let mut response_state = use_signal(|| None);
     let mut paginator = use_signal(|| Paginator::default());
     let mut song_url = use_signal(|| "".to_string());
@@ -178,6 +181,7 @@ pub fn Udrome() -> Element {
         loop {
             // Loop and wait for the next message
             if let Some(page) = rx.next().await {
+                debug!("request {page:?}");
                 // TODO error handling and/or (better?) assume always valid via validating base_url first
                 let Ok(url) = req.at(page.offset, page.size, page.search) else {
                     continue;
@@ -198,17 +202,9 @@ pub fn Udrome() -> Element {
                         .unwrap();
                     let response = response.subsonic_response;
                     cache.insert(url, response.clone());
-
-                    if let ResponseBody::SearchResult3(res) = &response.body {
-                        let count = res.song.iter().count();
-                        // SAFETY: force-converting usize to u32:
-                        // search results are limited to ~a single visible page. This should
-                        // comfortably fit into the destination type unless you're an alien with
-                        // frightening vision capabilities
-                        paginator.write().clamp_offset(count.try_into().unwrap());
-                    }
                     response
                 };
+
                 response_state.set(Some(response));
             } else {
                 break;
@@ -216,11 +212,24 @@ pub fn Udrome() -> Element {
         }
     });
 
-    // Send a message to the coroutine
     let _ = use_resource(move || async move {
         debug!("update");
         paginator.write().set_search(search.read().clone());
         tx.send(paginator.read().cur());
+    });
+
+    let response_memo = use_memo(move || response_state());
+    let _ = use_resource(move || async move {
+        if let Some(response) = response_memo.read().as_ref() {
+            if let ResponseBody::SearchResult3(res) = &response.body {
+                let count = res.song.iter().count();
+                // SAFETY: force-converting usize to u32:
+                // search results are limited to ~a single visible page. This should
+                // comfortably fit into the destination type unless you're an alien with
+                // frightening vision capabilities
+                paginator.write().clamp_offset(count.try_into().unwrap());
+            }
+        }
     });
 
     rsx! {
