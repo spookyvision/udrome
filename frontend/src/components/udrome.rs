@@ -1,7 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
 use dioxus::prelude::*;
-use dioxus_cli_config::is_cli_enabled;
 use dioxus_logger::tracing::{debug, error, info};
 use futures::StreamExt;
 use serde::Deserialize;
@@ -122,7 +121,6 @@ enum Command {
 }
 #[component]
 pub fn Udrome() -> Element {
-    let standalone = if is_cli_enabled() { "no" } else { "yes" };
     let mut response_state = use_signal(|| None);
     let mut paginator = use_signal(|| Paginator::default());
     let mut song_url = use_signal(|| "".to_string());
@@ -219,7 +217,6 @@ pub fn Udrome() -> Element {
                     "next"
                 }
                 Player { url: song_url, title }
-                "standalone build: {standalone}"
             }
 
             SearchResult {
