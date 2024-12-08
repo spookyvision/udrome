@@ -7,7 +7,7 @@ use serde::Deserialize;
 use subsonic_types::{
     common::{Format, Version},
     request::{search::Search3, Authentication, Request as SRequest, SubsonicRequest},
-    response::{Child as Song, Response as SubsonicResponse},
+    response::{Child as Song, Response as SubsonicResponse, ResponseBody},
 };
 use url::Url;
 
@@ -18,6 +18,7 @@ use crate::{
 
 struct Paginator {
     offset: u32,
+    max_offset: u32,
     size: u32,
     search: Option<String>,
 }
@@ -31,6 +32,7 @@ impl Paginator {
     fn new(size: u32) -> Self {
         Self {
             offset: 0,
+            max_offset: u32::MAX,
             size,
             search: None,
         }
@@ -52,12 +54,31 @@ impl Paginator {
         self.cur()
     }
     fn next(&mut self) -> Page {
-        self.offset = self.offset.saturating_add(self.size);
+        self.offset = self.offset.saturating_add(self.size).min(self.max_offset);
         self.cur()
     }
 
     fn set_search(&mut self, search: Option<String>) {
-        self.search = search;
+        if search != self.search {
+            self.offset = 0;
+            self.max_offset = u32::MAX;
+            self.search = search;
+        }
+    }
+
+    // limit max offset if we're on the last page or overshot it
+    fn clamp_offset(&mut self, cur_result_count: u32) {
+        if cur_result_count < self.size {
+            debug!(
+                "cur {} has {cur_result_count} results, clamping to cur",
+                self.offset
+            );
+            self.max_offset = self.offset;
+        } else if cur_result_count == 0 {
+            // TODO this branch needs testing
+            debug!("cur {} has 0 results, clamping -1", self.offset);
+            self.max_offset = self.offset.saturating_sub(1);
+        }
     }
 }
 
@@ -177,6 +198,15 @@ pub fn Udrome() -> Element {
                         .unwrap();
                     let response = response.subsonic_response;
                     cache.insert(url, response.clone());
+
+                    if let ResponseBody::SearchResult3(res) = &response.body {
+                        let count = res.song.iter().count();
+                        // SAFETY: force-converting usize to u32:
+                        // search results are limited to ~a single visible page. This should
+                        // comfortably fit into the destination type unless you're an alien with
+                        // frightening vision capabilities
+                        paginator.write().clamp_offset(count.try_into().unwrap());
+                    }
                     response
                 };
                 response_state.set(Some(response));
