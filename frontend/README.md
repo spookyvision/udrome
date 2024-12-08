@@ -1,38 +1,26 @@
-# Setup
+# udrome frontend
+
+minimal docs for now; unix-y environments only
+
+## Setup
 ```bash
 npm install
 ```
 
-# Development
+## Development
+In developer mode we're using a separate frontend server for hot reloading etc.
+Setting `dev=true` in `udrome.toml` sets up CORS to allow every request.
 
 ```bash
-./watch_tailwind &
-dx serve
+./watch_tailwind & # compile tailwind in the background when things change
+BACKEND_URL=http://localhost:3000 dx serve
 ```
 
-# Bundle ("release build")
+## Bundle ("release build")
+the backend is supposed to serve the frontend static files from `$DATA_DIR/public`.
 
 ```bash
-./_tailwind
-dx bundle
+./_tailwind # compile tailwind once
+dx bundle # build static site
 cp -r target/dx/udrome-frontend/release/web/public $DATA_DIR
 ```
-
-### Tailwind
-```bash
-fswatch . | xargs -n 1 ./watchee
-```
-
-### Serving Your App
-
-Run the following command in the root of your project to start developing with the default platform:
-
-```bash
-dx serve
-```
-
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
-

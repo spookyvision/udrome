@@ -4,11 +4,17 @@ data_path = "/tmp"
 # max cache size
 cache_mb = 512
 bind_addr = "localhost:3000"
-# this essentially disables the indexer. 
-# useful for quick restarts (and retaining song IDs for connected clients).
+# true: sets cors to allow any request - needed when frontend is served separately
 dev = true
 
 [indexer]
+# false: useful for quick restarts (and retaining song IDs for connected clients).
+enable = true
+
+[indexer.exclude]
+files = ["corrupt1.mp3", "corrupt2.mp3"]
+# TODO
+dirs = []
 
 [system.profiler]
 # TODO (tracing-tracy)
@@ -18,10 +24,4 @@ dev = true
 media = ["oggvorbis.rhai", "mod.rhai"]
 
 [media]
-paths = ["/Users/ace/tmp"]
-
-[media.exclude]
-# TODO
-files = ["12 - Fragments of freedom.mp3"]
-# TODO exclude dirs
-dirs = []
+paths = ["/media/mp3z"]

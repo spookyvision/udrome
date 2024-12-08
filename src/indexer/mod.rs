@@ -4,7 +4,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use db::DB;
 use ffprobe::{metadata, Tag as FFProbeTag};
 use filesize::PathExt;
-use id3::{frame::Picture, Error, Tag as Id3Tag, TagLike};
+use id3::{frame::Picture, Tag as Id3Tag, TagLike};
 use mime_guess::{
     mime::{AUDIO, MPEG},
     Mime, MimeGuess,
@@ -18,7 +18,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    config::Config,
+    config::{Config, Indexer as IndexerConfig},
     entity::{cover_art, song},
     load,
     util::{Pwn, Unpwn},
@@ -125,7 +125,7 @@ pub struct Indexer {
     media_paths: Vec<Utf8PathBuf>,
     db: Arc<DB>,
     skip_tagged: bool,
-    dev: bool,
+    config: IndexerConfig,
 }
 impl Indexer {
     pub async fn new(config: &Config) -> Result<Self, db::Error> {
@@ -133,7 +133,7 @@ impl Indexer {
             media_paths: config.media.paths.clone(),
             skip_tagged: false,
             db: Arc::new(DB::new(&config.system.data_path).await?),
-            dev: config.system.dev,
+            config: config.indexer.clone(),
         })
     }
     pub fn db(&self) -> Arc<DB> {
@@ -149,6 +149,11 @@ impl Indexer {
         info!("gotta go this fast: {par}");
         let par = par.into();
 
+        let enable = self.config.enable;
+        if !enable {
+            warn!("indexer disabled! (running just dirwalk)");
+        }
+
         let (indexer_tx, mut indexer_rx) = mpsc::channel::<Utf8PathBuf>(par);
 
         // TODO assumes 100 is a good batch size for sql insertions, needs research
@@ -158,15 +163,9 @@ impl Indexer {
 
         let db = self.db.clone();
 
-        let dev = self.dev;
         let mut known = HashSet::new();
-
-        if dev {
-            warn!("dev mode, skipping known-speedup!");
-        } else {
-            let everything = self.db.all_songs().await;
-            known.extend(everything.into_iter().map(|song| song.path));
-        }
+        let everything = self.db.all_songs().await;
+        known.extend(everything.into_iter().map(|song| song.path));
 
         spawn(async move {
             let mut entries = Vec::with_capacity(io_par);
@@ -249,16 +248,16 @@ impl Indexer {
                         }
                     }
                 }
-
                 entries.clear();
             }
         });
 
+        let mut exclude_files = HashSet::<String>::new();
+        exclude_files.extend(self.config.exclude.files.iter().map(|s| s.to_string()));
+
         spawn(async move {
             let mut entries = Vec::with_capacity(par);
 
-            let mut quarantine = HashSet::<&str>::new();
-            quarantine.extend(&["12 - Fragments of freedom.mp3"]);
             loop {
                 indexer_rx.recv_many(&mut entries, par).await;
                 if indexer_rx.is_closed() {
@@ -270,7 +269,16 @@ impl Indexer {
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
                     .par_iter()
-                    .filter(|entry| !known.contains(entry.as_str()))
+                    .filter(|entry| {
+                        let is_known = known.contains(entry.as_str());
+                        let is_exclude =
+                            exclude_files.contains(entry.file_name().expect("no file name?"));
+                        if is_exclude {
+                            warn!("excluding {entry}");
+                        }
+
+                        !(is_known || is_exclude)
+                    })
                     .map(|path: &Utf8PathBuf| {
                         trace!("processing {path} {:?}", path.file_name());
                         let mime_type = mime_guess::from_path(path).first();
@@ -327,9 +335,7 @@ impl Indexer {
                     })
                     .collect();
 
-                if dev {
-                    warn!("dev mode, skipping db!");
-                } else {
+                if enable {
                     for md in mds {
                         if let Err(e) = db_tx.send(md).await {
                             warn!("tx error (OK on shutdown) {e}");

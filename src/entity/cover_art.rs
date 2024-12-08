@@ -2,7 +2,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncWriteExt};
-use tracing::debug;
+use tracing::{debug, trace};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "cover_art")]
@@ -21,7 +21,6 @@ impl Model {
         path.push("artwork");
         path.push(format!("{shard}"));
         path.push(format!("{id}"));
-        debug!("cover path {path}");
         path
     }
 
@@ -33,7 +32,7 @@ impl Model {
         let path = Self::path2(id, shard, root);
         let containing_dir = path.parent().expect("could not create containing path");
         tokio::fs::create_dir_all(containing_dir).await?;
-        debug!("write {path}");
+        trace!("write {path}");
         let mut file = File::create(path).await?;
         file.write_all(data).await?;
         Ok(())

@@ -8,6 +8,7 @@ use tracing::info;
 pub struct Config {
     pub system: System,
     pub media: Media,
+    pub indexer: Indexer,
 }
 
 #[derive(Deserialize)]
@@ -21,6 +22,18 @@ pub struct System {
 #[derive(Deserialize)]
 pub struct Media {
     pub paths: Vec<camino::Utf8PathBuf>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Indexer {
+    pub enable: bool,
+    pub exclude: Exclude,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Exclude {
+    pub files: Vec<String>,
+    pub dirs: Vec<String>,
 }
 
 #[derive(Error, Debug)]
@@ -46,24 +59,3 @@ impl Config {
         Ok(toml::from_str(&data)?)
     }
 }
-
-// /// Simple program to greet a person
-// #[derive(Parser, Debug)]
-// #[command(version, about, long_about = None)]
-// pub struct Args {
-//     /// Path to your music collection
-//     #[arg(short, long)]
-//     pub media_path: PathBuf,
-
-//     /// Path that will contain `udrome.sqlite`
-//     #[arg(short, long)]
-//     pub db_path: PathBuf,
-
-//     /// Shall the indexer skip files with metadata?
-//     #[arg(short, long, default_value_t = false)]
-//     pub skip_tagged: bool,
-
-//     /// Address to listen on
-//     #[arg(short, long, default_value_t = String::from("localhost:3000"))]
-//     pub address: String,
-// }

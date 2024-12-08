@@ -111,13 +111,7 @@ async fn serve_frontend(state: State<AppState>, uri: Uri) -> impl IntoResponse {
 }
 
 pub async fn serve(db: Arc<DB>, config: &Config) {
-    let cors = CorsLayer::new()
-        // allow `GET` and `POST` when accessing the resource
-        .allow_methods([Method::GET, Method::POST])
-        // allow requests from any origin
-        .allow_origin(cors::Any);
-
-    let app = Router::new()
+    let mut app = Router::new()
         .fallback(serve_frontend)
         .route(
             "/",
@@ -331,8 +325,17 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
                         error!("{error:?}");
                     },
                 ),
-        )
-        .layer(cors);
+        );
+
+    if config.system.dev {
+        warn!("CORS: allowing any request");
+        let cors = CorsLayer::new()
+            // allow `GET` and `POST` when accessing the resource
+            .allow_methods([Method::GET, Method::POST])
+            // allow requests from any origin
+            .allow_origin(cors::Any);
+        app = app.layer(cors);
+    }
 
     let listener = tokio::net::TcpListener::bind(&config.system.bind_addr)
         .await
