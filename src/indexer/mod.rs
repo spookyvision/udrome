@@ -29,6 +29,8 @@ mod migration;
 
 pub mod db;
 
+pub(crate) mod types;
+
 mod ffprobe;
 
 #[derive(Clone)]
@@ -71,6 +73,13 @@ impl Tag {
             Tag::Id3(tag) => tag.artist(),
         }
     }
+
+    fn album(&self) -> Option<&str> {
+        match self {
+            Tag::Ffprobe(tag) => tag.album.as_deref(),
+            Tag::Id3(tag) => tag.album(),
+        }
+    }
 }
 #[derive(Debug)]
 struct IndexerResult {
@@ -92,6 +101,10 @@ impl IndexerResult {
         self.tag.as_ref().map(|t| t.artist()).flatten()
     }
 
+    fn album(&self) -> Option<&str> {
+        self.tag.as_ref().map(|t| t.album()).flatten()
+    }
+
     fn size(&self) -> Option<u64> {
         self.path.as_std_path().size_on_disk().ok()
     }
@@ -99,12 +112,13 @@ impl IndexerResult {
         mp3_duration::from_path(&self.path).ok()
     }
     pub fn pictures(&self) -> Vec<&Picture> {
-        // TODO use ffmpeg
-        // self.meta
-        //     .tag()
-        //     .map(|t| t.pictures().collect::<Vec<_>>())
-        //     .unwrap_or_default()
-        vec![]
+        self.tag
+            .as_ref()
+            .map(|t| match t {
+                Tag::Ffprobe(tag) => vec![],
+                Tag::Id3(tag) => tag.pictures().collect(),
+            })
+            .unwrap_or_default()
     }
 }
 pub struct Indexer {
@@ -176,7 +190,7 @@ impl Indexer {
                             // parent: todo!(),
                             title: AV::Set(info.title().to_string()),
                             path: AV::Set(info.path.to_string()),
-                            // album: todo!(),
+                            album: AV::Set(info.album().to_pwned()),
                             artist: AV::Set(info.artist().to_pwned()),
                             // track: todo!(),
                             duration: AV::Set(info.duration().map(|d| d.as_secs() as u32)),

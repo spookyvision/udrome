@@ -33,7 +33,14 @@ use tower_http::{
 };
 use tracing::{debug, error, info, warn, Span};
 
-use crate::{config::Config, entity::song, indexer::db::DB};
+use crate::{
+    config::Config,
+    entity::song,
+    indexer::{
+        db::DB,
+        types::{Artist, QueryResult},
+    },
+};
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
 struct SR(SubsonicResponse);
@@ -69,8 +76,10 @@ impl From<song::Model> for Child {
         child.path = Some(song.path);
         child.parent = song.parent;
         child.title = song.title;
+        child.album_id = song.album.clone();
         child.album = song.album;
-        child.artist = song.artist;
+        child.artist = song.artist.clone();
+        child.artist_id = song.artist;
         child.track = song.track;
         child.duration = song.duration.map(|d| Seconds::new(d as _));
         child.year = song.year;
@@ -115,10 +124,10 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             get(|state| async {
                 serve_frontend(
                     state,
-                    (Uri::builder()
+                    Uri::builder()
                         .path_and_query("/index.html")
                         .build()
-                        .unwrap()),
+                        .unwrap(),
                 )
                 .await
             }),
@@ -198,13 +207,21 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             "/rest/search3.view",
             get(
                 |State(state): State<AppState>, query: Query<Search3>| async move {
-                    let songs = state.db.query(&query).await.into_iter().map(|m| m.into());
+                    let QueryResult {
+                        albums,
+                        artists,
+                        songs,
+                    } = state.db.query(&query).await;
+
+                    let albums = albums.into_iter().map(|m| m.into()).collect();
+                    let artists = artists.into_iter().map(|m| m.into()).collect();
+                    let songs = songs.into_iter().map(|m| m.into()).collect();
                     SR(SubsonicResponse::ok(
                         Version::V1_13_0,
                         ResponseBody::SearchResult3(SearchResult3 {
-                            artist: vec![],
-                            album: vec![],
-                            song: songs.collect(),
+                            artist: artists,
+                            album: albums,
+                            song: songs,
                         }),
                     ))
                 },
@@ -245,14 +262,23 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
         )
         .route(
             "/rest/getArtists.view",
-            get(|| async {
-                let mut artist = ArtistID3::default();
-                artist.name = "ART!!!".into();
-                artist.id = "1".into();
+            get(|State(state): State<AppState>| async move {
+                // TODO (everywhere): do we gain anything from using Option<String> for user_query instead?
+                let ars = state
+                    .db
+                    .get_artists("", None, None)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(ArtistID3::from)
+                    .inspect(|a| {
+                        debug!("{}", a.name);
+                    })
+                    .collect();
                 let artists = ArtistsID3 {
                     index: vec![IndexID3 {
                         name: "idx".into(),
-                        artist: vec![artist],
+                        artist: ars,
                     }],
                     ignored_articles: "".into(),
                 };
@@ -264,11 +290,20 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
         )
         .route(
             "/rest/getAlbumList2.view",
-            get(|| async {
-                let mut album = AlbumID3::default();
-                album.id = "1".into();
-                album.name = "MY FIRST ALBUM".into();
-                let albums = AlbumList2 { album: vec![album] };
+            get(|State(state): State<AppState>| async move {
+                let albums = state
+                    .db
+                    .get_albums("", None, None)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(AlbumID3::from)
+                    .inspect(|a| {
+                        debug!("{}", a.name);
+                    })
+                    .collect();
+
+                let albums = AlbumList2 { album: albums };
                 SR(SubsonicResponse::ok(
                     Version::V1_13_0,
                     ResponseBody::AlbumList2(albums),

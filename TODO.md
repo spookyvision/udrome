@@ -22,3 +22,8 @@
 - [ ] DB indexing
 - [ ] DB transactions
 - [ ] audit all unwrap/expect
+
+## dox
+### dev
+- `sea-orm-cli migrate generate -d src/indexer/migration`
+- FE: tailwind watcher
