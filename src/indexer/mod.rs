@@ -165,7 +165,7 @@ impl Indexer {
                 let _count = db_rx.recv_many(&mut entries, io_par).await;
                 for info in &entries {
                     {
-                        debug!("got {info:?}");
+                        trace!("got {info:?}");
 
                         // TODO error handling
                         let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
@@ -251,7 +251,7 @@ impl Indexer {
                     return;
                 }
                 indexer_rx.recv_many(&mut entries, par).await;
-                debug!("workload {}", entries.len());
+                trace!("workload {}", entries.len());
 
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
