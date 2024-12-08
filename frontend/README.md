@@ -1,7 +1,22 @@
+# Setup
+```bash
+npm install
+```
+
 # Development
 
-Your new jumpstart project includes basic organization with an organized `assets` folder and a `components` folder. 
-If you chose to develop with the router feature, you will also have a `views` folder.
+```bash
+./watch_tailwind &
+dx serve
+```
+
+# Bundle ("release build")
+
+```bash
+./_tailwind
+dx bundle
+cp -r target/dx/udrome-frontend/release/web/public $DATA_DIR
+```
 
 ### Tailwind
 ```bash
