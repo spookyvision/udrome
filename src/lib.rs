@@ -25,19 +25,18 @@ pub trait FileVisitor: Clone {
 }
 
 // TODO not parallel enough!!!
-async fn load(parent: impl AsRef<Utf8Path>, mut action: impl FileVisitor, count: &AtomicU32) {
-    let parent_path = parent.as_ref();
-    for entry in WalkDir::new(parent_path) {
+async fn load(root: impl AsRef<Utf8Path>, mut action: impl FileVisitor, count: &AtomicU32) {
+    for entry in WalkDir::new(root.as_ref()) {
+        let Ok(entry) = entry else {
+            error!("?? {entry:?}");
+            return;
+        };
+
         let val: u32 = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // TODO progress report
         if val % 100 == 0 {
             // info!("(load) {val}");
         }
-
-        let Ok(entry) = entry else {
-            error!("?? {entry:?}");
-            return;
-        };
 
         let ep = entry.into_path();
         let Some(path) = Utf8Path::from_path(&ep) else {

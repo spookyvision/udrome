@@ -172,14 +172,14 @@ impl Indexer {
             let mut entries = Vec::with_capacity(io_par);
 
             loop {
+                db_rx.recv_many(&mut entries, io_par).await;
                 if db_rx.is_closed() {
                     warn!("FIXME: db channel has shut down");
                     return;
                 }
-                let _count = db_rx.recv_many(&mut entries, io_par).await;
                 for info in &entries {
                     {
-                        trace!("got {info:?}");
+                        trace!("inserting {:?} - {}", info.artist(), info.title());
 
                         // TODO error handling
                         let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
@@ -207,7 +207,7 @@ impl Indexer {
                         let song_id = match song::Entity::insert(song).exec(db.connection()).await {
                             Ok(inner_res) => Some(inner_res.last_insert_id),
                             Err(e) => {
-                                trace!("inserting song: {e}");
+                                warn!("inserting song: {e}");
                                 None
                             }
                         };
@@ -260,12 +260,12 @@ impl Indexer {
             let mut quarantine = HashSet::<&str>::new();
             quarantine.extend(&["12 - Fragments of freedom.mp3"]);
             loop {
+                indexer_rx.recv_many(&mut entries, par).await;
                 if indexer_rx.is_closed() {
                     warn!("FIXME: indexer channel has shut down");
                     return;
                 }
-                indexer_rx.recv_many(&mut entries, par).await;
-                trace!("workload {}", entries.len());
+                // trace!("workload {}", entries.len());
 
                 // collect is wasteful but we need an async context for queue send
                 let mds: Vec<_> = entries
@@ -348,6 +348,6 @@ impl Indexer {
         for path in &self.media_paths {
             load(path, visitor.clone(), &count).await;
         }
-        debug!("indexer::finish");
+        debug!("indexer::finish {count:?}");
     }
 }

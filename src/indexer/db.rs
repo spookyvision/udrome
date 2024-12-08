@@ -154,8 +154,6 @@ impl DB {
     }
 
     pub(crate) async fn query(&self, query: &Search3) -> QueryResult {
-        let mut albums: Vec<Album> = vec![];
-
         let mut songs = vec![];
         debug!("{query:?}");
 
@@ -181,18 +179,26 @@ impl DB {
             .map(|a| a.into())
             .collect();
 
-        // get songs
-        let mut filter = Condition::all();
+        // get songs, use query to filter any(artist.all(query), albums.all(query), songs.all(query))
+        let mut filter_songs = Condition::all();
+        let mut filter_artists = Condition::all();
+        let mut filter_albums = Condition::all();
         for word in user_query.split(" ") {
             if !word.is_empty() {
                 do_filter = true;
-                filter = filter.add(song::Column::Title.contains(word));
+                filter_songs = filter_songs.add(song::Column::Title.contains(word));
+                filter_albums = filter_albums.add(song::Column::Album.contains(word));
+                filter_artists = filter_artists.add(song::Column::Artist.contains(word));
             }
         }
 
         let mut op = song::Entity::find();
 
         if do_filter {
+            let filter = Condition::any()
+                .add(filter_songs)
+                .add(filter_artists)
+                .add(filter_albums);
             op = op.filter(filter);
         }
 
