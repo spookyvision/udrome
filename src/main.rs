@@ -1,13 +1,7 @@
 use std::env;
 
-use camino::Utf8PathBuf;
 use tokio::spawn;
-use tracing::debug;
-use udrome::{
-    api::serve,
-    config::{self, Config},
-    indexer::Indexer,
-};
+use udrome::{api::serve, config::Config, indexer::Indexer};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
