@@ -7,4 +7,7 @@
 - ghoti (contrarian)
 
 ## running
-`cargo run -- -m your_music_folder -d data_directory (-a bind_address)`
+```bash
+$ cp udrome.example.toml udrome.toml # and edit it
+$ cargo run
+```
