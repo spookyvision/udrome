@@ -12,8 +12,8 @@
 The udrome server speaks (a minimal subset of) Subsonic. The only player I'm currently testing with is [Feishin](https://github.com/jeffvli/feishin) with udrome configured as Subsonic server (needs latest Feishin).
 
 ```bash
-$ cp udrome.example.toml udrome.toml # and edit it
-$ cargo run
+cp udrome.example.toml udrome.toml # and edit it
+cargo run
 ```
 
 ### Frontend
