@@ -1,5 +1,5 @@
 use dioxus::{prelude::*, web::WebEventExt};
-use dioxus_logger::tracing::{debug, warn};
+use dioxus_logger::tracing::warn;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlAudioElement;
 #[component]

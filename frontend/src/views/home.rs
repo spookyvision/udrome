@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::{Hero, Udrome};
+use crate::components::Udrome;
 
 #[component]
 pub fn Home() -> Element {

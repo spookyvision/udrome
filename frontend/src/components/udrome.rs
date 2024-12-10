@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use dioxus::prelude::*;
-use dioxus_logger::tracing::{debug, error, info};
+use dioxus_logger::tracing::{debug, error};
 use futures::StreamExt;
 use serde::Deserialize;
 use subsonic_types::{
