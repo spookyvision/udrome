@@ -31,8 +31,11 @@ pub(crate) struct Tag {
     pub(crate) title: String,
     pub(crate) artist: Option<String>,
     pub(crate) album: Option<String>,
+    #[allow(unused)]
     pub(crate) genre: Option<String>,
-    // hurray it can be "01" or "2/14", so no uint here 🙄
+    // hurray: it can be "01" or "2/14", so no uint here 🙄
+    // ... should we parse it?
+    #[allow(unused)]
     pub(crate) track: Option<String>,
 }
 

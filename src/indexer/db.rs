@@ -1,8 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::{
-    sea_query::extension::postgres::PgExpr, ColumnTrait, Condition, ConnectOptions,
-    Database, DatabaseConnection, DbErr, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait,
+    ColumnTrait, Condition, ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait,
+    Order, QueryFilter, QueryOrder, QuerySelect,
 };
 use sea_orm_migration::MigratorTrait;
 use subsonic_types::request::search::Search3;
@@ -89,6 +88,8 @@ impl DB {
         limit: Option<u32>,
         offset: Option<u32>,
     ) -> Result<Vec<Artist>, DbErr> {
+        // TODO `is_not_null` doesn't seem to do its job, we do get
+        // WARN Type("A null value was encountered while decoding \"artist\"")
         let mut filter_cond = Condition::all().add(song::Column::Artist.is_not_null());
         for word in filter.split(" ") {
             if !word.is_empty() {
@@ -99,7 +100,6 @@ impl DB {
         let mut query = song::Entity::find()
             .filter(filter_cond)
             .select_only()
-            // .column(song::Column::Artist)
             .column_as(song::Column::Artist, "name")
             .order_by(song::Column::Artist, Order::Asc)
             .distinct();

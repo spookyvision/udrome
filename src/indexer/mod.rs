@@ -115,7 +115,10 @@ impl IndexerResult {
         self.tag
             .as_ref()
             .map(|t| match t {
-                Tag::Ffprobe(tag) => vec![],
+                Tag::Ffprobe(_) => {
+                    warn!("{}: ffprobe selected for cover art extraction, but this is likely never going to get implemented", self.path);
+                    vec![]
+                },
                 Tag::Id3(tag) => tag.pictures().collect(),
             })
             .unwrap_or_default()
@@ -124,14 +127,12 @@ impl IndexerResult {
 pub struct Indexer {
     media_paths: Vec<Utf8PathBuf>,
     db: Arc<DB>,
-    skip_tagged: bool,
     config: IndexerConfig,
 }
 impl Indexer {
     pub async fn new(config: &Config) -> Result<Self, db::Error> {
         Ok(Indexer {
             media_paths: config.media.paths.clone(),
-            skip_tagged: false,
             db: Arc::new(DB::new(&config.system.data_path).await?),
             config: config.indexer.clone(),
         })
@@ -151,11 +152,13 @@ impl Indexer {
 
         let enable = self.config.enable;
         if !enable {
-            warn!("indexer disabled! (running just dirwalk)");
+            warn!("indexer disabled! (just running dirwalk)");
         }
 
         let (indexer_tx, mut indexer_rx) = mpsc::channel::<Utf8PathBuf>(par);
 
+        // TODO batching is currently unused (future: can we even do batch upserts?)
+        //
         // TODO assumes 100 is a good batch size for sql insertions, needs research
         // maybe better to not batch at all so we can error on row level
         let io_par = 100;
@@ -260,6 +263,9 @@ impl Indexer {
 
             loop {
                 indexer_rx.recv_many(&mut entries, par).await;
+                if !enable {
+                    continue;
+                }
                 if indexer_rx.is_closed() {
                     warn!("FIXME: indexer channel has shut down");
                     return;
@@ -335,11 +341,9 @@ impl Indexer {
                     })
                     .collect();
 
-                if enable {
-                    for md in mds {
-                        if let Err(e) = db_tx.send(md).await {
-                            warn!("tx error (OK on shutdown) {e}");
-                        }
+                for md in mds {
+                    if let Err(e) = db_tx.send(md).await {
+                        warn!("tx error (OK on shutdown) {e}");
                     }
                 }
 

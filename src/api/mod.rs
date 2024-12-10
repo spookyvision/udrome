@@ -5,7 +5,7 @@ use axum::{
     extract::{Query, State},
     http::{header::CONTENT_TYPE, Method, Request, StatusCode, Uri},
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::get,
     Router,
 };
@@ -31,15 +31,12 @@ use tower_http::{
     cors::{self, CorsLayer},
     trace::TraceLayer,
 };
-use tracing::{debug, error, info, warn, Span};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use crate::{
     config::Config,
     entity::song,
-    indexer::{
-        db::DB,
-        types::QueryResult,
-    },
+    indexer::{db::DB, types::QueryResult},
 };
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
@@ -91,7 +88,23 @@ impl From<song::Model> for Child {
     }
 }
 
-async fn serve_frontend(state: State<AppState>, uri: Uri) -> impl IntoResponse {
+// enum Either {
+//     First(Box<dyn IntoResponse>),
+//     Second(Box<dyn IntoResponse>),
+// }
+
+// impl IntoResponse for Either {
+//     fn into_response(self) -> Response {
+//         match self {
+//             Either::First(r) => r.into_response(),
+//             Either::Second(r) => r.into_response(),
+//         }
+//     }
+// }
+
+// frontend is mostly a directory tree served 1:1, but for dioxus router we need
+// to redirect to `/` in a 404 scenario
+async fn serve_frontend(state: State<AppState>, uri: Uri) -> Response {
     let components = uri.path().split("/");
     let path = components.fold(state.file_root.clone(), |acc, e| acc.join(e));
     let mime_type = MimeGuess::from_path(path.as_std_path())
@@ -101,13 +114,14 @@ async fn serve_frontend(state: State<AppState>, uri: Uri) -> impl IntoResponse {
     let file = match tokio::fs::File::open(path).await {
         Ok(file) => file,
         Err(err) => {
-            return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err)));
+            debug!("File not found: {}", err);
+            return Redirect::to("/").into_response();
         }
     };
 
     let headers = [(CONTENT_TYPE, mime_type)];
     let body = AsyncReadBody::new(file);
-    Ok((headers, body))
+    (headers, body).into_response()
 }
 
 pub async fn serve(db: Arc<DB>, config: &Config) {
@@ -308,17 +322,18 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             db,
             file_root: Utf8Path::new(&config.system.data_path).join("public"),
         })
+        .layer(axum::middleware::from_fn(uri_middleware))
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|req: &Request<Body>, _span: &Span| {
                     debug!("{} {}", req.method(), req.uri());
                 })
                 .on_response(|response: &Response, _latency: Duration, _span: &Span| {
-                    // debug!("{response:?}");
-                    // debug!(
-                    //     "{:?}",
-                    //     response.extensions().get::<RequestUri>().map(|r| &r.0)
-                    // )
+                    trace!("{response:?}");
+                    trace!(
+                        "{:?}",
+                        response.extensions().get::<RequestUri>().map(|r| &r.0)
+                    )
                 })
                 .on_failure(
                     |error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
@@ -350,9 +365,9 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
         .expect("could not axum::serve()");
 }
 
-async fn shutdown_signal() {
-    info!("shutting down");
-}
+// async fn shutdown_signal() {
+//     info!("shutting down");
+// }
 
 #[derive(Clone)]
 struct RequestUri(Uri);

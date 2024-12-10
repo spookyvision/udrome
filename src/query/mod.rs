@@ -8,6 +8,7 @@ use id3::Tag;
 // [ ] metadata
 
 // not ideal, means you can't eg filter by artist that way, TODO
+#[allow(unused)]
 enum QueryGroup {
     DirComponents(Vec<String>),
     FileExploded(Vec<String>),
