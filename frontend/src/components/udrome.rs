@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use dioxus::prelude::*;
+use dioxus::{prelude::*, web::WebEventExt};
 use dioxus_logger::tracing::{debug, error};
 use futures::StreamExt;
 use serde::Deserialize;
@@ -10,6 +10,8 @@ use subsonic_types::{
     response::{Child as Song, Response as SubsonicResponse, ResponseBody},
 };
 use url::Url;
+use wasm_bindgen::JsCast;
+use web_sys::{HtmlElement, HtmlInputElement};
 
 use crate::{
     components::{Player, SearchResult},
@@ -137,11 +139,6 @@ impl Request00r {
     }
 }
 
-enum Command {
-    Next,
-    Prev,
-    At(u32),
-}
 #[component]
 pub fn Udrome() -> Element {
     debug!("rerender");
@@ -150,6 +147,8 @@ pub fn Udrome() -> Element {
     let mut song_url = use_signal(|| "".to_string());
     let mut title = use_signal(|| "".to_string());
     let mut search = use_signal(|| None);
+    let mut search_field: Signal<Option<HtmlInputElement>> = use_signal(|| None);
+    let mut app_container: Signal<Option<HtmlElement>> = use_signal(|| None);
     let base_url = use_signal(|| {
         option_env!("BACKEND_URL")
             .map(|e| e.to_string())
@@ -171,7 +170,6 @@ pub fn Udrome() -> Element {
         search.set(search_val);
     });
     let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| async move {
-        // TODO hardcoded lol
         let req = Request00r::new(base_url.read().as_str());
 
         // Define your state before the loop
@@ -196,7 +194,7 @@ pub fn Udrome() -> Element {
                         .send()
                         .await
                         .inspect_err(|e| error!("oh nose {e:?}"))
-                        .unwrap()
+                        .unwrap() // TODO this crashes on error
                         .json()
                         .await
                         .unwrap();
@@ -232,10 +230,52 @@ pub fn Udrome() -> Element {
         }
     });
 
+    // handler defined as closure so we can have comments (rsx format removes them)
+    let handle_keydown = move |ev: KeyboardEvent| {
+        let key = ev.key();
+        let code = ev.code();
+        let mofos = ev.modifiers();
+        debug!(">{key}< >{code}< {mofos:?}");
+        if let Some(field) = search_field.as_ref() {
+            // TODO howto i18n search?
+            // TODO properly handle Mac (meta = cmd) vs non-Mac
+            // there is Key::Find but it doesn't seem to trigger
+            if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
+                field.focus().ok();
+            } else if key == Key::Escape {
+                // clear search input
+                field.set_value("");
+                // force search action update
+                debounce.action("".to_string());
+                // change focus to app
+                // TODO reset scroll position
+                app_container.as_ref().and_then(|c| c.focus().ok());
+            }
+        }
+    };
+
     rsx! {
-        div { id: "udrome",
+        div {
+            tabindex: 0,
+            onkeydown: handle_keydown,
+            id: "udrome",
+            onmounted: move |ev| {
+                if let Some(el) = ev.try_as_web_event() {
+                    if let Ok(el) = el.dyn_into::<HtmlElement>() {
+                        app_container.set(Some(el))
+                    }
+                }
+            },
             div { class: "mx-auto px-4 fixed overflow-y-auto",
                 input {
+                    onmounted: move |ev| {
+                        debug!("mounted {ev:?}");
+                        if let Some(el) = ev.try_as_web_event() {
+                            if let Ok(el) = el.dyn_into::<HtmlInputElement>() {
+                                search_field.set(Some(el))
+                            }
+                        }
+                    },
                     oninput: move |ev| {
                         let text = ev.value();
                         debounce.action(text);

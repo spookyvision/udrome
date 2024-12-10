@@ -5,6 +5,10 @@ body {
     margin: 20px;
 }
 
+div:focus {
+    outline: none;
+  }
+
 #hero {
     margin: 0;
     display: flex;

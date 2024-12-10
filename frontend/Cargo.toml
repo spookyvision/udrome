@@ -18,7 +18,7 @@ serde = { version = "1.0.215", features = ["derive"] }
 subsonic-types = "0.2.0"
 url = "2.5.4"
 wasm-bindgen = "0.2.99"
-web-sys = { version = "0.3.76", features = ["HtmlAudioElement", "Window"] }
+web-sys = { version = "0.3.76", features = ["HtmlAudioElement", "HtmlElement", "HtmlInputElement", "Window"] }
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 
 [features]
