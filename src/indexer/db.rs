@@ -1,19 +1,19 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::{
-    prelude::Expr, sea_query::extension::postgres::PgExpr, ColumnTrait, Condition, ConnectOptions,
+    sea_query::extension::postgres::PgExpr, ColumnTrait, Condition, ConnectOptions,
     Database, DatabaseConnection, DbErr, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect,
     QueryTrait,
 };
 use sea_orm_migration::MigratorTrait;
 use subsonic_types::request::search::Search3;
 use thiserror::Error;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use super::types::QueryResult;
 use crate::{
     entity::{
         cover_art,
-        song::{self, Song},
+        song::{self},
     },
     indexer::{
         migration,

@@ -1,8 +1,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use camino::{Utf8Path, Utf8PathBuf};
-use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use camino::Utf8Path;
+use tracing::error;
 use walkdir::WalkDir;
 
 // goal: build as much as possible so it can be reused by Fileperson

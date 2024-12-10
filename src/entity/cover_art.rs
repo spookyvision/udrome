@@ -2,7 +2,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncWriteExt};
-use tracing::{debug, trace};
+use tracing::trace;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "cover_art")]

@@ -38,7 +38,7 @@ use crate::{
     entity::song,
     indexer::{
         db::DB,
-        types::{Artist, QueryResult},
+        types::QueryResult,
     },
 };
 

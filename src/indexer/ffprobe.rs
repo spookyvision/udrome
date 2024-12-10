@@ -7,7 +7,7 @@ use serde::{
 };
 use serde_json::{Map, Value};
 use thiserror::Error;
-use tracing::{trace, warn};
+use tracing::warn;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Metadata {

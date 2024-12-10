@@ -7,7 +7,7 @@ use filesize::PathExt;
 use id3::{frame::Picture, Tag as Id3Tag, TagLike};
 use mime_guess::{
     mime::{AUDIO, MPEG},
-    Mime, MimeGuess,
+    Mime,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{ActiveValue as AV, EntityTrait};
