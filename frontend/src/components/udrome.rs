@@ -257,11 +257,13 @@ pub fn Udrome() -> Element {
         let mofos = ev.modifiers();
         debug!(">{key}< >{code}< {mofos:?}");
         if let Some(field) = search_field.as_ref() {
+            let mut handled = false;
             // TODO howto i18n search?
             // TODO properly handle Mac (meta = cmd) vs non-Mac
             // there is Key::Find but it doesn't seem to trigger
             if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
                 field.focus().inspect_err(|e| error!("{e:?}")).ok();
+                handled = true;
             } else if key == Key::Escape {
                 // clear search input
                 field.set_value("");
@@ -272,10 +274,9 @@ pub fn Udrome() -> Element {
                 if let Some(app) = app_container.as_ref() {
                     app.focus().inspect_err(|e| error!("{e:?}")).ok();
                 }
+                handled = true;
             } else if code == Code::Space {
-                debug!("spaaaace");
                 if let Some(player) = player.as_ref() {
-                    debug!("plaaaayeer");
                     if !*player_focused.read() {
                         if player.paused() {
                             player.play().inspect_err(|e| error!("{e:?}")).ok();
@@ -284,6 +285,11 @@ pub fn Udrome() -> Element {
                         }
                     }
                 }
+                handled = true;
+            }
+
+            if handled {
+                ev.prevent_default();
             }
         }
     };
