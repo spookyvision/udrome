@@ -151,6 +151,7 @@ pub fn Udrome() -> Element {
     let mut app_container: Signal<Option<HtmlElement>> = use_signal(|| None);
     let mut player = use_signal(|| None);
     let mut player_focused = use_signal(|| false);
+    let mut search_focused = use_signal(|| false);
 
     let base_url = use_signal(|| {
         option_env!("BACKEND_URL")
@@ -251,54 +252,62 @@ pub fn Udrome() -> Element {
     };
 
     // handler defined as closure so we can have comments (rsx format removes them)
-    let handle_keydown = move |ev: KeyboardEvent| {
+    let onkeydown = move |ev: KeyboardEvent| {
         let key = ev.key();
         let code = ev.code();
         let mofos = ev.modifiers();
         debug!(">{key}< >{code}< {mofos:?}");
-        if let Some(field) = search_field.as_ref() {
-            let mut handled = false;
-            // TODO howto i18n search?
-            // TODO properly handle Mac (meta = cmd) vs non-Mac
-            // there is Key::Find but it doesn't seem to trigger
-            if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
-                field.focus().inspect_err(|e| error!("{e:?}")).ok();
-                handled = true;
-            } else if key == Key::Escape {
-                // clear search input
-                field.set_value("");
-                // force search action update
-                debounce.action("".to_string());
-                // change focus to app
-                // TODO reset scroll position
-                if let Some(app) = app_container.as_ref() {
-                    app.focus().inspect_err(|e| error!("{e:?}")).ok();
+        let mut handled = false;
+        // TODO howto i18n search?
+        // TODO properly handle Mac (meta = cmd) vs non-Mac
+        // there is Key::Find but it doesn't seem to trigger
+        if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
+            if let Some(search_field) = search_field.as_ref() {
+                if let Err(e) = search_field.focus() {
+                    error!("{e:?}");
                 }
+                debug!("doen");
                 handled = true;
-            } else if code == Code::Space {
+            }
+        } else if key == Key::Escape {
+            // clear search input
+            if let Some(search_field) = search_field.as_ref() {
+                search_field.set_value("");
+            }
+            // force search action update
+            debounce.action("".to_string());
+            // change focus to app
+            // TODO reset scroll position
+            if let Some(app) = app_container.as_ref() {
+                app.focus().inspect_err(|e| error!("{e:?}")).ok();
+            }
+            handled = true;
+        } else if code == Code::Space {
+            // we want space to work normally in the search field,
+            // and the player element normally has its own playpause on space
+            if !*search_focused.read() && !*player_focused.read() {
                 if let Some(player) = player.as_ref() {
-                    if !*player_focused.read() {
-                        if player.paused() {
-                            player.play().inspect_err(|e| error!("{e:?}")).ok();
-                        } else {
-                            player.pause().inspect_err(|e| error!("{e:?}")).ok();
-                        }
+                    if player.paused() {
+                        player.play().inspect_err(|e| error!("{e:?}")).ok();
+                    } else {
+                        player.pause().inspect_err(|e| error!("{e:?}")).ok();
                     }
                 }
                 handled = true;
             }
+        }
 
-            if handled {
-                ev.prevent_default();
-            }
+        if handled {
+            ev.prevent_default();
         }
     };
 
     rsx! {
         div {
             tabindex: 0,
-            onkeydown: handle_keydown,
+            onkeydown,
             id: "udrome",
+            class: "h-screen",
             onmounted: move |ev| {
                 if let Some(el) = ev.try_as_web_event() {
                     if let Ok(el) = el.dyn_into::<HtmlElement>() {
@@ -315,6 +324,14 @@ pub fn Udrome() -> Element {
                                 search_field.set(Some(el))
                             }
                         }
+                    },
+                    onfocus: move |ev| {
+                        debug!("search::focus");
+                        search_focused.set(true);
+                    },
+                    onblur: move |ev| {
+                        debug!("search::blur");
+                        search_focused.set(false);
                     },
                     oninput: move |ev| {
                         let text = ev.value();
