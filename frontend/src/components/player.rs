@@ -1,25 +1,19 @@
-use dioxus::{prelude::*, web::WebEventExt};
-use dioxus_logger::tracing::warn;
-use wasm_bindgen::JsCast;
-use web_sys::HtmlAudioElement;
+use dioxus::prelude::*;
 #[component]
-pub fn Player(url: String, title: String) -> Element {
-    let mut this = use_signal(|| None);
+pub fn Player(
+    url: String,
+    title: String,
+    onmounted: EventHandler<MountedEvent>,
+    onfocus: EventHandler<FocusEvent>,
+    onblur: EventHandler<FocusEvent>,
+) -> Element {
     rsx! {
             div {
                 id: "player",
                 audio {
-                    onmounted: move|ev: MountedEvent| {
-                        if let Some(el) = ev.try_as_web_event() {
-                            if let Ok(el) = el.dyn_into::<HtmlAudioElement>() {
-                                el.load();
-                                if let Err(e) = el.play() {
-                                    warn!("player error: {e:?}");
-                                }
-                                this.set(Some(el));
-                            }
-                        }
-                    },
+                    onmounted,
+                    onfocus,
+                    onblur,
 
                     controls:true, source{
                     src:url, type:"audio/mpeg"

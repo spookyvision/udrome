@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use dioxus::{prelude::*, web::WebEventExt};
-use dioxus_logger::tracing::{debug, error};
+use dioxus_logger::tracing::{debug, error, warn};
 use futures::StreamExt;
 use serde::Deserialize;
 use subsonic_types::{
@@ -11,7 +11,7 @@ use subsonic_types::{
 };
 use url::Url;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlElement, HtmlInputElement};
+use web_sys::{HtmlAudioElement, HtmlElement, HtmlInputElement};
 
 use crate::{
     components::{Player, SearchResult},
@@ -149,12 +149,20 @@ pub fn Udrome() -> Element {
     let mut search = use_signal(|| None);
     let mut search_field: Signal<Option<HtmlInputElement>> = use_signal(|| None);
     let mut app_container: Signal<Option<HtmlElement>> = use_signal(|| None);
+    let mut player = use_signal(|| None);
+    let mut player_focused = use_signal(|| false);
+
     let base_url = use_signal(|| {
         option_env!("BACKEND_URL")
             .map(|e| e.to_string())
             .unwrap_or_else(|| {
                 web_sys::window()
-                    .map(|win| win.location().origin().ok())
+                    .map(|win| {
+                        win.location()
+                            .origin()
+                            .inspect_err(|e| error!("{e:?}"))
+                            .ok()
+                    })
                     .flatten()
                     .expect("could not determine origin URL")
             })
@@ -230,6 +238,18 @@ pub fn Udrome() -> Element {
         }
     });
 
+    let player_mounted = move |ev: MountedEvent| {
+        if let Some(el) = ev.try_as_web_event() {
+            if let Ok(el) = el.dyn_into::<HtmlAudioElement>() {
+                el.load();
+                if let Err(e) = el.play() {
+                    warn!("player error: {e:?}");
+                }
+                player.set(Some(el));
+            }
+        }
+    };
+
     // handler defined as closure so we can have comments (rsx format removes them)
     let handle_keydown = move |ev: KeyboardEvent| {
         let key = ev.key();
@@ -241,7 +261,7 @@ pub fn Udrome() -> Element {
             // TODO properly handle Mac (meta = cmd) vs non-Mac
             // there is Key::Find but it doesn't seem to trigger
             if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
-                field.focus().ok();
+                field.focus().inspect_err(|e| error!("{e:?}")).ok();
             } else if key == Key::Escape {
                 // clear search input
                 field.set_value("");
@@ -249,7 +269,21 @@ pub fn Udrome() -> Element {
                 debounce.action("".to_string());
                 // change focus to app
                 // TODO reset scroll position
-                app_container.as_ref().and_then(|c| c.focus().ok());
+                if let Some(app) = app_container.as_ref() {
+                    app.focus().inspect_err(|e| error!("{e:?}")).ok();
+                }
+            } else if code == Code::Space {
+                debug!("spaaaace");
+                if let Some(player) = player.as_ref() {
+                    debug!("plaaaayeer");
+                    if !*player_focused.read() {
+                        if player.paused() {
+                            player.play().inspect_err(|e| error!("{e:?}")).ok();
+                        } else {
+                            player.pause().inspect_err(|e| error!("{e:?}")).ok();
+                        }
+                    }
+                }
             }
         }
     };
@@ -283,19 +317,31 @@ pub fn Udrome() -> Element {
                 }
                 button {
                     class: "btn",
-                    onclick: move |ev| {
+                    onclick: move |_ev| {
                         paginator.write().prev();
                     },
                     "prev"
                 }
                 button {
                     class: "btn",
-                    onclick: move |ev| {
+                    onclick: move |_ev| {
                         paginator.write().next();
                     },
                     "next"
                 }
-                Player { url: song_url, title }
+                Player {
+                    url: song_url,
+                    title,
+                    onmounted: player_mounted,
+                    onfocus: move |_ev| {
+                        debug!("player::focus");
+                        player_focused.set(true);
+                    },
+                    onblur: move |_ev| {
+                        debug!("player::blur");
+                        player_focused.set(false);
+                    }
+                }
             }
 
             SearchResult {
