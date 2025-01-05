@@ -303,12 +303,14 @@ pub fn Udrome() -> Element {
     };
 
     // TODO https://crates.io/crates/dioxus-free-icons
+    // TODO why do we need overflow-y-hidden ??
+
     rsx! {
         div {
             tabindex: 0,
             onkeydown,
             id: "udrome",
-            class: "p-4 sm:ml-64",
+            class: "sm:ml-64 h-screen overflow-y-hidden",
             onmounted: move |ev| {
                 if let Some(el) = ev.try_as_web_event() {
                     if let Ok(el) = el.dyn_into::<HtmlElement>() {
@@ -316,7 +318,7 @@ pub fn Udrome() -> Element {
                     }
                 }
             },
-            div { class: "mx-auto px-4 fixed overflow-y-auto",
+            div { class: "px-4 top-0 fixed h-10",
                 input {
                     onmounted: move |ev| {
                         debug!("mounted {ev:?}");
@@ -353,19 +355,6 @@ pub fn Udrome() -> Element {
                     },
                     "next"
                 }
-                Player {
-                    url: song_url,
-                    title,
-                    onmounted: player_mounted,
-                    onfocus: move |_ev| {
-                        debug!("player::focus");
-                        player_focused.set(true);
-                    },
-                    onblur: move |_ev| {
-                        debug!("player::blur");
-                        player_focused.set(false);
-                    },
-                }
             }
 
             SearchResult {
@@ -376,6 +365,20 @@ pub fn Udrome() -> Element {
                     title.set(song.title);
                     debug!("play {url}");
                     song_url.set(url);
+                },
+            }
+
+            Player {
+                url: song_url,
+                title,
+                onmounted: player_mounted,
+                onfocus: move |_ev| {
+                    debug!("player::focus");
+                    player_focused.set(true);
+                },
+                onblur: move |_ev| {
+                    debug!("player::blur");
+                    player_focused.set(false);
                 },
             }
         }

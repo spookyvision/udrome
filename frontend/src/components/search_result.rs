@@ -4,7 +4,7 @@ use subsonic_types::response::{Child as Song, Response, ResponseBody};
 #[component]
 pub fn SearchResult(content: Signal<Option<Response>>, onclick: EventHandler<Song>) -> Element {
     rsx! {
-        div { class: "mx-auto pt-10 max-w-3xl",
+        div { class: "pl-8 sm:mb-10 sm:mt-10 overflow-y-auto h-[calc(100vh-6rem)]",
             match content.read().as_ref().map(|res| &res.body) {
                 Some(ResponseBody::SearchResult3(res)) => {
                     rsx! {
