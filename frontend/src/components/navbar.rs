@@ -6,7 +6,7 @@ const NAVBAR_CSS: Asset = asset!("/assets/styling/blog.css");
 #[component]
 pub fn Navbar() -> Element {
     rsx! {
-        document::Link { rel: "stylesheet", href: NAVBAR_CSS }
+        document::Stylesheet { href: NAVBAR_CSS }
 
         button {
             "data-drawer-toggle": "sidebar",
