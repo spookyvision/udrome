@@ -1,10 +1,11 @@
 [system]
 # where udrome stores its database, plugins, album art, transcoded files, etc.
 data_path = "/tmp"
-# max cache size
+# TODO max cache size
 cache_mb = 512
 bind_addr = "localhost:3000"
 # true: sets cors to allow any request - needed when frontend is served separately
+# !disable this in prod!
 dev = true
 
 [indexer]
