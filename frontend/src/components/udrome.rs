@@ -109,6 +109,7 @@ impl Request00r {
         }
     }
 
+    // TODO maybe? https://crates.io/crates/dioxus-query
     fn at(&self, page: u32, size: u32, query: Option<String>) -> Result<Url, url::ParseError> {
         let search = Search3 {
             query: query.unwrap_or_default(),
@@ -266,7 +267,6 @@ pub fn Udrome() -> Element {
                 if let Err(e) = search_field.focus() {
                     error!("{e:?}");
                 }
-                debug!("doen");
                 handled = true;
             }
         } else if key == Key::Escape {
@@ -302,12 +302,13 @@ pub fn Udrome() -> Element {
         }
     };
 
+    // TODO https://crates.io/crates/dioxus-free-icons
     rsx! {
         div {
             tabindex: 0,
             onkeydown,
             id: "udrome",
-            class: "h-screen",
+            class: "p-4 sm:ml-64",
             onmounted: move |ev| {
                 if let Some(el) = ev.try_as_web_event() {
                     if let Ok(el) = el.dyn_into::<HtmlElement>() {
@@ -325,18 +326,18 @@ pub fn Udrome() -> Element {
                             }
                         }
                     },
-                    onfocus: move |ev| {
+                    onfocus: move |_ev| {
                         debug!("search::focus");
                         search_focused.set(true);
                     },
-                    onblur: move |ev| {
+                    onblur: move |_ev| {
                         debug!("search::blur");
                         search_focused.set(false);
                     },
                     oninput: move |ev| {
                         let text = ev.value();
                         debounce.action(text);
-                    }
+                    },
                 }
                 button {
                     class: "btn",
@@ -363,7 +364,7 @@ pub fn Udrome() -> Element {
                     onblur: move |_ev| {
                         debug!("player::blur");
                         player_focused.set(false);
-                    }
+                    },
                 }
             }
 
@@ -375,7 +376,7 @@ pub fn Udrome() -> Element {
                     title.set(song.title);
                     debug!("play {url}");
                     song_url.set(url);
-                }
+                },
             }
         }
     }

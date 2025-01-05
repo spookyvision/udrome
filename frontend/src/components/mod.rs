@@ -1,5 +1,3 @@
-mod hero;
-
 mod navbar;
 pub use navbar::Navbar;
 
