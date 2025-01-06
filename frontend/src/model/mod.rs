@@ -16,7 +16,7 @@ impl SongInfo {
         let hours = mins / 60;
         let secs = total_secs % 60;
         let res = match total_secs {
-            0..60 => format!("{secs:02}"),
+            0..60 => format!("0:{secs:02}"),
             60..3600 => format!("{mins:02}:{secs:02}"),
             _ => format!("{hours}:{mins:02}:{secs:02}"),
         };
