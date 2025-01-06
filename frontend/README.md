@@ -23,7 +23,11 @@ generated and would pollute commits/history quite a bit. For that reason please 
 commit it - a suitable way to auto-ignore it is adding it to `.git/info/exclude`.
 
 ## Bundle ("release build")
-the backend is supposed to serve the frontend static files from `$DATA_DIR/public`.
+The backend is supposed to serve the frontend static files from `$DATA_DIR/public`.
+If you use a reverse proxy, set your base url in `Dioxus.toml`:
+```toml
+base_path = "udrome"
+```
 
 ```bash
 ./_tailwind # compile tailwind once

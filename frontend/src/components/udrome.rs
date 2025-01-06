@@ -155,15 +155,20 @@ pub fn Udrome() -> Element {
     let mut player_focused = use_signal(|| false);
     let mut search_focused = use_signal(|| false);
 
-    let base_url = use_signal(|| {
+    let base_url: Signal<String> = use_signal(|| {
         option_env!("BACKEND_URL")
             .map(|e| e.to_string())
             .unwrap_or_else(|| {
                 web_sys::window()
                     .map(|win| {
-                        win.location()
-                            .origin()
-                            .inspect_err(|e| error!("{e:?}"))
+                        let loc = win.location();
+                        let path = loc
+                            .pathname()
+                            .inspect_err(|e| error!("pathname error: {e:?}"))
+                            .unwrap_or_default();
+                        loc.origin()
+                            .inspect_err(|e| error!("origin error: {e:?}"))
+                            .map(|origin| origin + &path)
                             .ok()
                     })
                     .flatten()
