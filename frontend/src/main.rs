@@ -1,9 +1,10 @@
 use components::Navbar;
 use dioxus::prelude::*;
 use dioxus_logger::tracing::Level;
-use views::{Album, Albums, Artist, Artists, Home, Song};
+use views::{Album, Albums, Artist, Artists, Home, Playlist, Playlists, Song};
 
 mod components;
+mod model;
 mod sdk;
 mod views;
 
@@ -23,6 +24,10 @@ enum Route {
     Albums {},
     #[route("/albums/:id")]
     Album { id: i32 },
+    #[route("/playlists/")]
+    Playlists {},
+    #[route("/playlists/:id")]
+    Playlist { id: i32 },
 }
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");

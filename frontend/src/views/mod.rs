@@ -28,3 +28,13 @@ pub fn Albums() -> Element {
 pub fn Album(id: i32) -> Element {
     rsx! { "album {id}" }
 }
+
+#[component]
+pub fn Playlists() -> Element {
+    rsx! { "playlists" }
+}
+
+#[component]
+pub fn Playlist(id: i32) -> Element {
+    rsx! { "playlist {id}" }
+}

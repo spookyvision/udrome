@@ -20,6 +20,7 @@ url = "2.5.4"
 wasm-bindgen = "0.2.99"
 web-sys = { version = "0.3.76", features = ["HtmlAudioElement", "HtmlElement", "HtmlInputElement", "Window"] }
 gloo-timers = { version = "0.3.0", features = ["futures"] }
+shrinkwraprs = "0.3.0"
 
 [features]
 default = ["web"]

@@ -15,6 +15,7 @@ use web_sys::{HtmlAudioElement, HtmlElement, HtmlInputElement};
 
 use crate::{
     components::{Player, SearchResult},
+    model::SongInfo,
     sdk::debounce::use_debounce,
 };
 
@@ -179,6 +180,7 @@ pub fn Udrome() -> Element {
         };
         search.set(search_val);
     });
+    // TODO maybe use_resource?
     let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| async move {
         let req = Request00r::new(base_url.read().as_str());
 
@@ -359,12 +361,16 @@ pub fn Udrome() -> Element {
 
             SearchResult {
                 content: response_state,
-                onclick: move |song: Song| {
-                    to_owned!(base_url);
-                    let url = format!("{}/rest/stream.view?id={}", base_url, song.id);
-                    title.set(song.title);
-                    debug!("play {url}");
-                    song_url.set(url);
+                onclick: move |song: SongInfo| {
+                    let base_url = base_url.read();
+                    let bu = base_url.as_str();
+                    let stream_url = song.stream_url(bu);
+                    debug!("play {stream_url}");
+                    if let Some(cover) = song.cover_art_url(bu) {
+                        debug!("ca {cover}");
+                    }
+                    title.set(song.title.clone());
+                    song_url.set(stream_url);
                 },
             }
 
