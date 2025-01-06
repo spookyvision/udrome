@@ -5,26 +5,14 @@ use crate::model::SongInfo;
 
 #[component]
 pub fn SearchResult(content: Signal<Option<Response>>, onclick: EventHandler<SongInfo>) -> Element {
-    let html = r#"
-    div { class: "rating",
-        input { name: "rating-{idx}", r#type: "radio", class: "mask mask-star" }
-        input {
-            name: "rating-{idx}",
-            checked: "checked",
-            r#type: "radio",
-            class: "mask mask-star",
-        }
-        input { name: "rating-{idx}", r#type: "radio", class: "mask mask-star" }
-        input { name: "rating-{idx}", r#type: "radio", class: "mask mask-star" }
-        input { r#type: "radio", name: "rating-{idx}", class: "mask mask-star" }
-    }"#;
+    // thead z-1 is required so rating stars stay clipped below
     rsx! {
         div { class: "pl-8 sm:mb-10 sm:mt-10 overflow-y-auto h-[calc(100vh-5rem)]",
             match content.read().as_ref().map(|res| &res.body) {
                 Some(ResponseBody::SearchResult3(res)) => {
                     rsx! {
                         table { class: "table",
-                            thead {
+                            thead { class: "sticky top-0 bg-base-300 z-1",
                                 tr {
                                     th { "#" }
                                     th { "Artist" }
