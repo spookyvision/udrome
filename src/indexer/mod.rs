@@ -183,8 +183,10 @@ impl Indexer {
                     {
                         trace!("inserting {:?} - {}", info.artist(), info.title());
 
-                        // TODO error handling
-                        let size = info.size().map(|sz| sz.try_into().expect("seriously?"));
+                        let Some(size) = info.size().map(|sz| sz.try_into()) else {
+                            error!("cannot handle honking huge file {info:?}");
+                            continue;
+                        };
 
                         // TODO transaction
 
