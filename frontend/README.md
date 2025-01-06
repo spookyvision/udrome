@@ -3,6 +3,7 @@
 minimal docs for now; unix-y environments only
 
 ## Setup
+install `dioxus-cli v0.6.x` as per https://dioxuslabs.com/learn/0.6/getting_started/, then:
 ```bash
 npm install
 ```
@@ -23,14 +24,20 @@ generated and would pollute commits/history quite a bit. For that reason please 
 commit it - a suitable way to auto-ignore it is adding it to `.git/info/exclude`.
 
 ## Bundle ("release build")
-The backend is supposed to serve the frontend static files from `$DATA_DIR/public`.
-If you use a reverse proxy, set your base url in `Dioxus.toml`:
+The backend is supposed to serve the frontend static files from `$DATA_PATH/public`.
+If you use a reverse proxy, set your base url in the backend `udrome.toml`
+and also in `Dioxus.toml` as well, too:
 ```toml
+[web.app]
 base_path = "udrome"
 ```
 
 ```bash
 ./_tailwind # compile tailwind once
 dx bundle # build static site
-cp -r target/dx/udrome-frontend/release/web/public $DATA_DIR
+
+# read data_path value into $DATA_PATH. You can also (should, really) do this manually
+DATA_PATH=$(awk '/data_path/ {gsub("\"","",$3); print $3}' ../udrome.toml) 
+
+cp -r target/dx/udrome-frontend/release/web/public $DATA_PATH
 ```
