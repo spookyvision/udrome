@@ -1,11 +1,14 @@
-# quality
-- [ ] dangling commits or sth?! (spurious artwork write ops)
+# quality/safety
+- [ ] clean up base_url, no leading/trailing slash
+- [ ] dangling DB commits or sth?! (spurious artwork write ops)
 - [ ] use string PKs?
+- [ ] DB transactions
+- [ ] audit all unwrap/expect
 
 # features
+## backend
 - [ ] album art: support 'folder' file
 - [ ] transcoding
-- [ ] web UI
 - [ ] accounts/admin
 - [ ] fswatch (notify-rs)
     - [ ] PollWatcher?
@@ -13,17 +16,20 @@
     - [ ] manage missing files
         - [ ] auto backup DB for undo
 
+## frontend
+- [ ] mobile layout
+- [ ] i18n
+- [ ] a11y
+- [ ] desktop app
+
 ## dedup
 - content adressable
     - cover art
     - songs?
 
-## quality/safety
-- [ ] DB indexing
-- [ ] DB transactions
-- [ ] audit all unwrap/expect
 
 ## dox
+- [ ] manual
 ### dev
 - `sea-orm-cli migrate generate -d src/indexer/migration`
 - FE: tailwind watcher
