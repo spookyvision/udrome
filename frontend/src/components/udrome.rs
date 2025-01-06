@@ -157,14 +157,16 @@ pub fn Udrome() -> Element {
     let mut search_focused = use_signal(|| false);
 
     let base_url: Signal<String> = use_signal(|| {
-        option_env!("BACKEND_URL")
+        let val = option_env!("BACKEND_URL")
             .map(|e| e.to_string())
             .unwrap_or_else(|| {
                 web_sys::window()
                     .map(|win| win.location().href().inspect_err(|e| error!("{e:?}")).ok())
                     .flatten()
                     .expect("could not determine origin URL")
-            })
+            });
+
+        val.strip_suffix("/").map(|s| s.to_string()).unwrap_or(val)
     });
 
     let mut debounce = use_debounce(Duration::from_millis(100), move |text: String| {
