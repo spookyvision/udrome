@@ -264,7 +264,8 @@ impl Indexer {
             loop {
                 indexer_rx.recv_many(&mut entries, par).await;
                 if !enable {
-                    continue;
+                    // TODO why do we need this? (remove -> busy waiting, but tx-chan should be dropped?)
+                    indexer_rx.close();
                 }
                 if indexer_rx.is_closed() {
                     warn!("FIXME: indexer channel has shut down");
@@ -355,8 +356,13 @@ impl Indexer {
 
         let count = Default::default();
         debug!("indexer::start");
-        for path in &self.media_paths {
-            load(path, visitor.clone(), &count).await;
+        if !enable {
+            drop(visitor);
+        } else {
+            // TODO why do we need to guard this on `enable`? (remove -> teh errorz)
+            for path in &self.media_paths {
+                load(path, visitor.clone(), &count).await;
+            }
         }
         debug!("indexer::finish {count:?}");
     }
