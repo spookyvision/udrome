@@ -16,6 +16,7 @@ pub struct System {
     pub data_path: String,
     pub cache_mb: u16,
     pub bind_addr: String,
+    pub base_url: Option<String>,
     pub dev: bool,
 }
 

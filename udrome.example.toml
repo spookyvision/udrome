@@ -4,6 +4,8 @@ data_path = "/tmp"
 # TODO max cache size
 cache_mb = 512
 bind_addr = "localhost:3000"
+# if you use a reverse proxy that maps udrome to /some/path, set this:
+#base_url = "/some/path"
 # true: sets cors to allow any request - needed when frontend is served separately
 # !disable this in prod!
 dev = true

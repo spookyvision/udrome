@@ -37,6 +37,7 @@ use crate::{
     config::Config,
     entity::song,
     indexer::{db::DB, types::QueryResult},
+    util::Pwn,
 };
 
 // wrapper to get around orphan rule, so we can impl IntoResponse
@@ -53,6 +54,7 @@ impl IntoResponse for SR {
 struct AppState {
     db: Arc<DB>,
     file_root: Utf8PathBuf,
+    base_url: String,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Scrobble {
@@ -103,19 +105,40 @@ impl From<song::Model> for Child {
 // }
 
 // frontend is mostly a directory tree served 1:1, but for dioxus router we need
-// to redirect to `/` in a 404 scenario
+// to redirect to `{base_url}/` in a 404 scenario
 async fn serve_frontend(state: State<AppState>, uri: Uri) -> Response {
-    let components = uri.path().split("/");
+    let base_url = &state.base_url;
+    let path = uri.path();
+
+    let components = match path
+        .strip_prefix(base_url)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
+    {
+        Ok(path) => path.split("/"),
+        Err(e) => {
+            error!("request outside of base URL ({base_url}): {path}");
+            return e.into_response();
+        }
+    };
+
     let path = components.fold(state.file_root.clone(), |acc, e| acc.join(e));
     let mime_type = MimeGuess::from_path(path.as_std_path())
         .first_or_octet_stream()
         .to_string();
 
-    let file = match tokio::fs::File::open(path).await {
+    let file = match tokio::fs::File::open(&path).await {
         Ok(file) => file,
         Err(err) => {
             debug!("File not found: {}", err);
-            return Redirect::to("/").into_response();
+
+            // prevent redirect loop
+            let mut index_path = state.file_root.clone();
+            index_path.push("index.html");
+            if path == index_path {
+                error!("index.html not found at public root: {index_path}");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            return Redirect::to((base_url.to_string() + "/").as_str()).into_response();
         }
     };
 
@@ -125,30 +148,28 @@ async fn serve_frontend(state: State<AppState>, uri: Uri) -> Response {
 }
 
 pub async fn serve(db: Arc<DB>, config: &Config) {
-    let mut app = Router::new()
-        .fallback(serve_frontend)
+    let base_url = config
+        .system
+        .base_url
+        .as_deref()
+        .to_pwned()
+        .unwrap_or_default();
+    let state = AppState {
+        db,
+        file_root: Utf8Path::new(&config.system.data_path).join("public"),
+        base_url: base_url.clone(),
+    };
+
+    let api = Router::new()
         .route(
-            "/",
-            get(|state| async {
-                serve_frontend(
-                    state,
-                    Uri::builder()
-                        .path_and_query("/index.html")
-                        .build()
-                        .unwrap(),
-                )
-                .await
-            }),
-        )
-        .route(
-            "/rest/scrobble.view",
+            "/scrobble.view",
             get(|query: Query<Scrobble>| async move {
                 debug!("TODO scrobble {query:?}");
                 SR(SubsonicResponse::ok(Version::LATEST, ResponseBody::Empty))
             }),
         )
         .route(
-            "/rest/getCoverArt.view",
+            "/getCoverArt.view",
             get(
                 |State(state): State<AppState>, query: Query<GetCoverArt>| async move {
                     let Some(cover_art) = state.db.get_cover_art(&query.id).await else {
@@ -171,7 +192,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             ),
         )
         .route(
-            "/rest/stream.view",
+            "/stream.view",
             get(
                 |State(state): State<AppState>,
                  range: Option<TypedHeader<Range>>,
@@ -196,7 +217,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             ),
         )
         .route(
-            "/rest/getSong.view",
+            "/getSong.view",
             get(
                 |State(state): State<AppState>, query: Query<GetSong>| async move {
                     let Some(song) = state.db.get_song(&query.id).await else {
@@ -212,7 +233,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             ),
         )
         .route(
-            "/rest/search3.view",
+            "/search3.view",
             get(
                 |State(state): State<AppState>, query: Query<Search3>| async move {
                     let QueryResult {
@@ -236,11 +257,11 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             ),
         )
         .route(
-            "/rest/ping.view",
+            "/ping.view",
             get(|| async { SR(SubsonicResponse::ok(Version::V1_13_0, ResponseBody::Empty)) }),
         )
         .route(
-            "/rest/getPlaylists.view",
+            "/getPlaylists.view",
             get(|| async {
                 let mut pl = Playlist::default();
                 pl.name = "EGG!!".into();
@@ -254,7 +275,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             }),
         )
         .route(
-            "/rest/getMusicFolders.view",
+            "/getMusicFolders.view",
             get(|| async {
                 let folders = MusicFolders {
                     music_folder: vec![MusicFolder {
@@ -269,7 +290,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             }),
         )
         .route(
-            "/rest/getArtists.view",
+            "/getArtists.view",
             get(|State(state): State<AppState>| async move {
                 // TODO (everywhere): do we gain anything from using Option<String> for user_query instead?
                 let ars = state
@@ -297,7 +318,7 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
             }),
         )
         .route(
-            "/rest/getAlbumList2.view",
+            "/getAlbumList2.view",
             get(|State(state): State<AppState>| async move {
                 let albums = state
                     .db
@@ -318,10 +339,21 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
                 ))
             }),
         )
-        .with_state(AppState {
-            db,
-            file_root: Utf8Path::new(&config.system.data_path).join("public"),
-        })
+        .with_state(state.clone());
+    let index_url = base_url.clone() + "/index.html";
+    let mut app = Router::new()
+        .fallback(serve_frontend)
+        .route(
+            (base_url.clone() + "/").as_str(),
+            get(|state| async move {
+                serve_frontend(
+                    state,
+                    Uri::builder().path_and_query(index_url).build().unwrap(),
+                )
+                .await
+            }),
+        )
+        .with_state(state)
         .layer(axum::middleware::from_fn(uri_middleware))
         .layer(
             TraceLayer::new_for_http()
@@ -340,7 +372,8 @@ pub async fn serve(db: Arc<DB>, config: &Config) {
                         error!("{error:?}");
                     },
                 ),
-        );
+        )
+        .nest(&(base_url.clone() + "/rest"), api);
 
     if config.system.dev {
         warn!("CORS: allowing any request");
