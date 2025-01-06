@@ -135,6 +135,7 @@ impl Request00r {
         let path = SRequest::<Search3>::PATH;
         let query = request.to_query();
 
+        debug!("{} - {}", self.base_url, path);
         // TODO .view?
         let res = format!("{}{path}.view?{query}", self.base_url).parse();
         res
