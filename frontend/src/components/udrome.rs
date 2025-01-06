@@ -160,17 +160,7 @@ pub fn Udrome() -> Element {
             .map(|e| e.to_string())
             .unwrap_or_else(|| {
                 web_sys::window()
-                    .map(|win| {
-                        let loc = win.location();
-                        let path = loc
-                            .pathname()
-                            .inspect_err(|e| error!("pathname error: {e:?}"))
-                            .unwrap_or_default();
-                        loc.origin()
-                            .inspect_err(|e| error!("origin error: {e:?}"))
-                            .map(|origin| origin + &path)
-                            .ok()
-                    })
+                    .map(|win| win.location().href().inspect_err(|e| error!("{e:?}")).ok())
                     .flatten()
                     .expect("could not determine origin URL")
             })
