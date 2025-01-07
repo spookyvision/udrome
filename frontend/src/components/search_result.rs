@@ -67,7 +67,7 @@ pub fn SearchResult(
     });
     // thead z-1 is required so rating stars stay clipped below
     rsx! {
-        div { class: "pl-8 sm:mb-10 sm:mt-10 overflow-y-auto h-[calc(100vh-5rem)]",
+        div { class: "sm:mb-10 sm:mt-10 overflow-y-auto h-[calc(100vh-5rem)] border-y-1 border-slate-700",
             table { class: "table",
                 thead { class: "sticky top-0 bg-base-300 z-1",
                     tr {

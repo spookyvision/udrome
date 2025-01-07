@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use dioxus::{prelude::*, web::WebEventExt};
-use dioxus_logger::tracing::{debug, error, warn};
+use dioxus_logger::tracing::{debug, error};
 use futures::StreamExt;
 use serde::Deserialize;
 use subsonic_types::{
@@ -11,11 +11,14 @@ use subsonic_types::{
 };
 use url::Url;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlAudioElement, HtmlElement, HtmlInputElement};
+use web_sys::{HtmlElement, HtmlInputElement};
 
 use crate::{
-    components::{Player, SearchResult},
-    model::{globals::SONG, SongInfo},
+    components::SearchResult,
+    model::{
+        globals::{BaseUrl, Focus, FOCUS, SONG},
+        SongInfo,
+    },
     sdk::debounce::use_debounce,
 };
 
@@ -140,33 +143,18 @@ impl Request00r {
 
 #[component]
 pub fn Udrome() -> Element {
-    debug!("FIXME rerender");
+    debug!("Udrome rerender");
     let mut response_state = use_signal(|| None);
     let mut paginator = use_signal(|| Paginator::default());
-    let mut song_url = use_signal(|| "".to_string());
-    let mut title = use_signal(|| "".to_string());
     let mut search = use_signal(|| None);
     let mut search_field: Signal<Option<HtmlInputElement>> = use_signal(|| None);
     let mut app_container: Signal<Option<HtmlElement>> = use_signal(|| None);
-    let mut player = use_signal(|| None);
-    let mut player_focused = use_signal(|| false);
     let mut search_focused = use_signal(|| false);
 
-    let base_url: Signal<String> = use_signal(|| {
-        let val = option_env!("BACKEND_URL")
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| {
-                web_sys::window()
-                    .map(|win| win.location().href().inspect_err(|e| error!("{e:?}")).ok())
-                    .flatten()
-                    .expect("could not determine origin URL")
-            });
-
-        val.strip_suffix("/").map(|s| s.to_string()).unwrap_or(val)
-    });
+    let base_url = use_context::<BaseUrl>();
 
     let mut debounce = use_debounce(Duration::from_millis(100), move |text: String| {
-        debug!("{text}");
+        debug!("debounce {text}");
         let search_val = if !text.is_empty() {
             Some(text.clone())
         } else {
@@ -176,9 +164,10 @@ pub fn Udrome() -> Element {
     });
     // TODO maybe use_resource?
     let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| async move {
-        let req = Request00r::new(base_url.read().as_str());
+        // TODO it seems fishy to use_context inside use_coroutine, but *is* there a better way?
+        let base_url = use_context::<BaseUrl>();
+        let req = Request00r::new(base_url.as_str());
 
-        // Define your state before the loop
         let client = reqwest::Client::new();
         let mut cache: HashMap<Url, SubsonicResponse> = HashMap::new();
 
@@ -238,24 +227,11 @@ pub fn Udrome() -> Element {
         }
     });
 
-    let player_mounted = move |ev: MountedEvent| {
-        if let Some(el) = ev.try_as_web_event() {
-            if let Ok(el) = el.dyn_into::<HtmlAudioElement>() {
-                el.load();
-                if let Err(e) = el.play() {
-                    warn!("player error: {e:?}");
-                }
-                player.set(Some(el));
-            }
-        }
-    };
-
     // handler defined as closure so we can have comments (rsx format removes them)
     let onkeydown = move |ev: KeyboardEvent| {
         let key = ev.key();
         let code = ev.code();
         let mofos = ev.modifiers();
-        debug!(">{key}< >{code}< {mofos:?}");
         let mut handled = false;
         // TODO howto i18n search?
         // TODO properly handle Mac (meta = cmd) vs non-Mac
@@ -280,21 +256,7 @@ pub fn Udrome() -> Element {
                 app.focus().inspect_err(|e| error!("{e:?}")).ok();
             }
             handled = true;
-        } else if code == Code::Space {
-            // we want space to work normally in the search field,
-            // and the player element normally has its own playpause on space
-            if !*search_focused.read() && !*player_focused.read() {
-                if let Some(player) = player.as_ref() {
-                    if player.paused() {
-                        player.play().inspect_err(|e| error!("{e:?}")).ok();
-                    } else {
-                        player.pause().inspect_err(|e| error!("{e:?}")).ok();
-                    }
-                }
-                handled = true;
-            }
         }
-
         if handled {
             ev.prevent_default();
         }
@@ -316,7 +278,6 @@ pub fn Udrome() -> Element {
                     offset: paginator.read().offset as usize,
                     content,
                     onclick: move |song: SongInfo| {
-                        let base_url = base_url.read();
                         let bu = base_url.as_str();
                         let stream_url = song.stream_url(bu);
                         debug!("play {stream_url}");
@@ -324,8 +285,6 @@ pub fn Udrome() -> Element {
                         if let Some(cover) = song.cover_art_url(bu) {
                             debug!("ca {cover}");
                         }
-                        title.set(song.title_with_optional_artist());
-                        song_url.set(stream_url);
                         *SONG.write() = Some(song);
                     },
                 }
@@ -359,12 +318,10 @@ pub fn Udrome() -> Element {
                         }
                     },
                     onfocus: move |_ev| {
-                        debug!("search::focus");
-                        search_focused.set(true);
+                        *FOCUS.write() = Some(Focus::Search);
                     },
                     onblur: move |_ev| {
-                        debug!("search::blur");
-                        search_focused.set(false);
+                        *FOCUS.write() = None;
                     },
                     oninput: move |ev| {
                         let text = ev.value();
@@ -388,20 +345,6 @@ pub fn Udrome() -> Element {
             }
 
             {songs}
-
-            Player {
-                url: song_url,
-                title,
-                onmounted: player_mounted,
-                onfocus: move |_ev| {
-                    debug!("player::focus");
-                    player_focused.set(true);
-                },
-                onblur: move |_ev| {
-                    debug!("player::blur");
-                    player_focused.set(false);
-                },
-            }
         }
     }
 }
