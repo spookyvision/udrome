@@ -1,6 +1,6 @@
 # quality/safety
+- [ ] IMPORTANT: dangling DB commits or sth?! spurious artwork write ops; songs don't get all added to db on first run?
 - [ ] clean up base_url, no leading/trailing slash
-- [ ] dangling DB commits or sth?! (spurious artwork write ops)
 - [ ] use string PKs?
 - [ ] DB transactions
 - [ ] audit all unwrap/expect
