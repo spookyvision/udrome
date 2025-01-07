@@ -1,7 +1,6 @@
 use components::Navbar;
 use dioxus::prelude::*;
-use dioxus_logger::tracing::{debug, warn, Level};
-use model::SongInfo;
+use dioxus_logger::tracing::Level;
 use views::{Album, Albums, Artist, Artists, Home, Playlist, Playlists, Song};
 
 mod components;

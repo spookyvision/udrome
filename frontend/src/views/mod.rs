@@ -2,8 +2,6 @@ mod home;
 use dioxus::prelude::*;
 pub use home::Home;
 
-use crate::components::Udrome;
-
 #[component]
 pub fn Song(id: i32) -> Element {
     rsx! { "song {id}" }

@@ -1,8 +1,6 @@
 use dioxus::prelude::*;
-use dioxus_logger::tracing::debug;
-use subsonic_types::response::Child;
 
-use crate::{components::Udrome, model::SongInfo};
+use crate::components::Udrome;
 
 #[component]
 pub fn Home() -> Element {

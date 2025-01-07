@@ -7,7 +7,7 @@ use serde::Deserialize;
 use subsonic_types::{
     common::{Format, Version},
     request::{search::Search3, Authentication, Request as SRequest, SubsonicRequest},
-    response::{Child as Song, Response as SubsonicResponse, ResponseBody},
+    response::{Response as SubsonicResponse, ResponseBody},
 };
 use url::Url;
 use wasm_bindgen::JsCast;
@@ -48,10 +48,6 @@ impl Paginator {
             offset: self.offset,
             search: self.search.clone(),
         }
-    }
-    fn at(&mut self, at: u32) -> Page {
-        self.offset = at * self.size;
-        self.cur()
     }
     fn prev(&mut self) -> Page {
         self.offset = self.offset.saturating_sub(self.size);
@@ -227,6 +223,8 @@ pub fn Udrome() -> Element {
     });
 
     let response_memo = use_memo(move || response_state());
+
+    // prevent paginator from running off to infinity (restrict to current search result size)
     let _ = use_resource(move || async move {
         if let Some(response) = response_memo.read().as_ref() {
             if let ResponseBody::SearchResult3(res) = &response.body {

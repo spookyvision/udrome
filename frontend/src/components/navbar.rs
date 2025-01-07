@@ -1,11 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_logger::tracing::{debug, error};
-use subsonic_types::response::Child;
 
-use crate::{
-    model::{globals::SONG, SongInfo},
-    Route,
-};
+use crate::{model::globals::SONG, Route};
 const NAVBAR_CSS: Asset = asset!("/assets/styling/blog.css");
 
 #[component]
