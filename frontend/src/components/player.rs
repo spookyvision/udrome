@@ -10,7 +10,7 @@ pub fn Player(
     rsx! {
         div { id: "player", class: "fixed bottom-0 z-41 h-10",
             audio {
-                class: "w-128",
+                class: "w-128 inline-block",
                 onmounted,
                 onfocus,
                 onblur,

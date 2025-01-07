@@ -43,7 +43,7 @@ impl FileVisitor for Visitor {
         &mut self,
         entry: impl AsRef<Utf8Path>,
     ) -> impl std::future::Future<Output = ()> + Send {
-        let entry = entry.as_ref().to_owned();
+        let entry: Utf8PathBuf = entry.as_ref().to_owned();
         async {
             if let Err(e) = self.tx.send(entry).await {
                 error!("queue error: {e:?}")
@@ -181,12 +181,17 @@ impl Indexer {
                 }
                 for info in &entries {
                     {
-                        trace!("inserting {:?} - {}", info.artist(), info.title());
-
-                        let Some(size) = info.size().map(|sz| sz.try_into()) else {
-                            error!("cannot handle honking huge file {info:?}");
+                        let Ok(size) = info.size().map(|sz| sz.try_into()).transpose() else {
+                            // unwrap safety: we must have Some(size) else the try_into() wouldn't have failed
+                            error!(
+                                "cannot handle honking huge file {} of size {}",
+                                info.path,
+                                info.size().unwrap()
+                            );
                             continue;
                         };
+
+                        trace!("inserting {:?} - {}", info.artist(), info.title());
 
                         // TODO transaction
 
@@ -266,7 +271,7 @@ impl Indexer {
             loop {
                 indexer_rx.recv_many(&mut entries, par).await;
                 if !enable {
-                    // TODO why do we need this? (remove -> busy waiting, but tx-chan should be dropped?)
+                    // TODO why do we need this? (remove it -> busy waiting, but tx-chan should be dropped?)
                     indexer_rx.close();
                 }
                 if indexer_rx.is_closed() {

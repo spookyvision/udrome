@@ -22,7 +22,7 @@ pub fn SearchResult(content: Signal<Option<Response>>, onclick: EventHandler<Son
                                     th { "Rating" }
                                 }
                             }
-                            tbody {
+                            tbody { class: "text-slate-300",
                                 for (idx , song , song2) in res.song
                                     .iter()
                                     .cloned()

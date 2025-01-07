@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use camino::Utf8Path;
-use tracing::error;
+use tracing::{debug, error};
 use walkdir::WalkDir;
 
 // goal: build as much as possible so it can be reused by Fileperson
@@ -31,19 +31,19 @@ async fn load(root: impl AsRef<Utf8Path>, mut action: impl FileVisitor, count: &
             return;
         };
 
-        let val: u32 = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // TODO progress report
-        if val % 100 == 0 {
-            // info!("(load) {val}");
-        }
-
         let ep = entry.into_path();
         let Some(path) = Utf8Path::from_path(&ep) else {
-            error!("?? {ep:?}");
+            error!("skipping non UTF-8 path: {ep:?}");
             return;
         };
 
+        let val: u32 = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if val % 100 == 0 {
+            debug!("indexer:: {val}");
+        }
+
         // TODO symlinks yes no maybe
+        // TODO hardcoded mp3 extension
         if path.is_file()
             && path.extension().map(|ext| ext.to_lowercase()) == Some("mp3".to_string())
         {

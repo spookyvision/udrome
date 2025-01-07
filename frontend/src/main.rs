@@ -1,6 +1,7 @@
 use components::Navbar;
 use dioxus::prelude::*;
-use dioxus_logger::tracing::Level;
+use dioxus_logger::tracing::{debug, warn, Level};
+use model::SongInfo;
 use views::{Album, Albums, Artist, Artists, Home, Playlist, Playlists, Song};
 
 mod components;
@@ -13,7 +14,7 @@ mod views;
 enum Route {
     #[layout(Navbar)]
     #[route("/")]
-    Home {},
+    Home { },
     #[route("/songs/:id")]
     Song { id: i32 },
     #[route("/artists/")]

@@ -1,6 +1,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::cover_art;
+
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "song")]
 pub struct Model {
@@ -23,7 +25,16 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_one = "cover_art::Entity")]
+    CoverArt,
+}
+
+impl Related<cover_art::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::CoverArt.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}
 

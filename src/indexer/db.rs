@@ -1,7 +1,9 @@
+use std::iter::zip;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use sea_orm::{
     ColumnTrait, Condition, ConnectOptions, Database, DatabaseConnection, DbErr, EntityTrait,
-    Order, QueryFilter, QueryOrder, QuerySelect,
+    LoaderTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use sea_orm_migration::MigratorTrait;
 use subsonic_types::request::search::Search3;
@@ -61,6 +63,7 @@ impl DB {
         })
     }
 
+    // TODO remove?
     pub async fn add_all(&self, songs: Vec<song::ActiveModel>) -> Result<(), DbErr> {
         let res = song::Entity::insert_many(songs)
             .on_empty_do_nothing()
@@ -80,6 +83,16 @@ impl DB {
             .all(&self.connection)
             .await
             .unwrap_or(vec![])
+    }
+
+    pub(crate) async fn song_already_in_db(&self, path: &str) -> bool {
+        song::Entity::find()
+            .filter(song::Column::Path.eq(path))
+            .count(self.connection())
+            .await
+            .inspect_err(|e| error!("song_already_in_db: {e:?}"))
+            .unwrap_or_default()
+            > 0
     }
 
     pub(crate) async fn get_artists(
@@ -114,7 +127,7 @@ impl DB {
             .into_model::<Artist>()
             .all(&self.connection)
             .await
-            .inspect_err(|e| warn!("{e:?}"))
+            .inspect_err(|e| error!("{e:?}"))
     }
 
     pub(crate) async fn get_albums(
@@ -154,7 +167,6 @@ impl DB {
     }
 
     pub(crate) async fn query(&self, query: &Search3) -> QueryResult {
-        let mut songs = vec![];
         debug!("{query:?}");
 
         // what the user was actually searching for
@@ -202,16 +214,29 @@ impl DB {
             op = op.filter(filter);
         }
 
-        match op
+        let mut songs = op
             .limit(query.song_count.map(|sc| sc as u64))
             .offset(query.song_offset.map(|so| so as u64))
             .order_by(song::Column::Title, Order::Asc)
             .all(&self.connection)
             .await
+            .inspect_err(|e| error!("{e:?}"))
+            .unwrap_or_default();
+
+        if let Ok(covers) = songs
+            .load_one(cover_art::Entity, self.connection())
+            .await
+            .inspect_err(|e| error!("{e:?}"))
         {
-            Ok(ents) => songs = ents,
-            Err(e) => error!("{e}"),
+            for (song, cover) in zip(&mut songs, covers) {
+                if let Some(cover) = cover {
+                    // TODO hacky, ewww
+                    let cover_id = format!("{}", cover.id);
+                    song.cover_art = Some(cover_id);
+                }
+            }
         }
+
         QueryResult {
             artists,
             albums,

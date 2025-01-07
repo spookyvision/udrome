@@ -1,13 +1,37 @@
 use dioxus::prelude::*;
+use dioxus_logger::tracing::{debug, error};
+use subsonic_types::response::Child;
 
-use crate::Route;
+use crate::{
+    model::{globals::SONG, SongInfo},
+    Route,
+};
 const NAVBAR_CSS: Asset = asset!("/assets/styling/blog.css");
 
 #[component]
 pub fn Navbar() -> Element {
+    let base_url = {
+        let val = option_env!("BACKEND_URL")
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| {
+                web_sys::window()
+                    .map(|win| win.location().href().inspect_err(|e| error!("{e:?}")).ok())
+                    .flatten()
+                    .expect("could not determine origin URL")
+            });
+
+        val.strip_suffix("/").map(|s| s.to_string()).unwrap_or(val)
+    };
+
+    let cover_art_url = SONG
+        .read()
+        .as_ref()
+        .map(|song| song.cover_art_url(&base_url))
+        .flatten()
+        .unwrap_or_default();
+
     rsx! {
         document::Stylesheet { href: NAVBAR_CSS }
-
         button {
             "data-drawer-toggle": "sidebar",
             r#type: "button",
@@ -59,9 +83,14 @@ pub fn Navbar() -> Element {
                 }
             }
         }
-        img { class: "fixed bottom-0 left-0 w-64 h-64 z-1 rounded border border-gray-900 bg-gray-500",
-            "hi"
+        img {
+            class: "fixed bottom-0 left-0 w-64 h-64 z-1 rounded border border-gray-900",
+            src: "{cover_art_url}",
+            onclick: move |_ev| {
+                debug!("{cover_art_url}");
+            },
         }
+
 
         Outlet::<Route> {}
     }

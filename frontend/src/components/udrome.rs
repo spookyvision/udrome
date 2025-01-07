@@ -15,7 +15,7 @@ use web_sys::{HtmlAudioElement, HtmlElement, HtmlInputElement};
 
 use crate::{
     components::{Player, SearchResult},
-    model::SongInfo,
+    model::{globals::SONG, SongInfo},
     sdk::debounce::use_debounce,
 };
 
@@ -144,7 +144,7 @@ impl Request00r {
 
 #[component]
 pub fn Udrome() -> Element {
-    debug!("rerender");
+    debug!("FIXME rerender");
     let mut response_state = use_signal(|| None);
     let mut paginator = use_signal(|| Paginator::default());
     let mut song_url = use_signal(|| "".to_string());
@@ -364,11 +364,13 @@ pub fn Udrome() -> Element {
                     let bu = base_url.as_str();
                     let stream_url = song.stream_url(bu);
                     debug!("play {stream_url}");
+                    debug!("{:?}", song.cover_art_url(bu));
                     if let Some(cover) = song.cover_art_url(bu) {
                         debug!("ca {cover}");
                     }
-                    title.set(song.title.clone());
+                    title.set(song.title_with_optional_artist());
                     song_url.set(stream_url);
+                    *SONG.write() = Some(song);
                 },
             }
 
