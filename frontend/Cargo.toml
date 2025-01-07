@@ -7,9 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dioxus-sdk = { git = "https://github.com/DioxusLabs/sdk.git", rev = "765dcfe", features = [
-    "timing",
-] }
+dioxus-sdk = { version = "0.6", features = ["timing", "channel"] }
 dioxus = { version = "0.6", features = ["router"] }
 dioxus-logger = "0.6"
 futures = "0.3.31"
@@ -26,6 +24,9 @@ web-sys = { version = "0.3.76", features = [
 ] }
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 shrinkwraprs = "0.3.0"
+async-broadcast = "0.7.2"
+async-channel = "2.3.1"
+gloo = "0.11.0"
 
 [features]
 default = ["web"]

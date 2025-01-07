@@ -1,7 +1,9 @@
 use std::{collections::HashMap, time::Duration};
 
 use dioxus::{prelude::*, web::WebEventExt};
+use dioxus_elements::mo;
 use dioxus_logger::tracing::{debug, error};
+use dioxus_sdk::utils::timing::use_debounce;
 use futures::StreamExt;
 use serde::Deserialize;
 use subsonic_types::{
@@ -16,10 +18,9 @@ use web_sys::{HtmlElement, HtmlInputElement};
 use crate::{
     components::SearchResult,
     model::{
-        globals::{BaseUrl, Focus, FOCUS, SONG},
+        globals::{BaseUrl, Command, CommandBroadcast, Focus, FOCUS, SONG},
         SongInfo,
     },
-    sdk::debounce::use_debounce,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -149,9 +150,11 @@ pub fn Udrome() -> Element {
     let mut search = use_signal(|| None);
     let mut search_field: Signal<Option<HtmlInputElement>> = use_signal(|| None);
     let mut app_container: Signal<Option<HtmlElement>> = use_signal(|| None);
-    let mut search_focused = use_signal(|| false);
 
     let base_url = use_context::<BaseUrl>();
+    let base_url2 = base_url.clone(); // 🙄
+
+    let (_tx, rx) = use_context::<CommandBroadcast>();
 
     let mut debounce = use_debounce(Duration::from_millis(100), move |text: String| {
         debug!("debounce {text}");
@@ -162,45 +165,72 @@ pub fn Udrome() -> Element {
         };
         search.set(search_val);
     });
+
+    let _r = use_resource(move || {
+        to_owned![rx, search_field, debounce];
+        async move {
+            let mut rx = Box::pin(rx);
+
+            while let Some(cmd) = rx.next().await {
+                debug!("chan! {cmd:?}");
+                if let Some(search_field) = search_field.as_ref() {
+                    debug!("chaaaaaan! {cmd:?}");
+                    match cmd {
+                        Command::Noop => {}
+                        Command::FocusSearch => {
+                            search_field.focus().inspect_err(|e| error!("{e:?}")).ok();
+                        }
+                        Command::BlurSearch => {
+                            search_field.set_value("");
+                            // force search action update
+                            debounce.action("".to_string());
+                            search_field.blur().inspect_err(|e| error!("{e:?}")).ok();
+                        }
+                    }
+                }
+            }
+        }
+    });
     // TODO maybe use_resource?
-    let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| async move {
-        // TODO it seems fishy to use_context inside use_coroutine, but *is* there a better way?
-        let base_url = use_context::<BaseUrl>();
-        let req = Request00r::new(base_url.as_str());
+    let tx = use_coroutine(move |mut rx: UnboundedReceiver<Page>| {
+        to_owned![base_url];
+        async move {
+            let req = Request00r::new(base_url.as_str());
 
-        let client = reqwest::Client::new();
-        let mut cache: HashMap<Url, SubsonicResponse> = HashMap::new();
+            let client = reqwest::Client::new();
+            let mut cache: HashMap<Url, SubsonicResponse> = HashMap::new();
 
-        loop {
-            // Loop and wait for the next message
-            if let Some(page) = rx.next().await {
-                debug!("request {page:?}");
-                // TODO error handling and/or (better?) assume always valid via validating base_url first
-                let Ok(url) = req.at(page.offset, page.size, page.search) else {
-                    continue;
-                };
+            loop {
+                // Loop and wait for the next message
+                if let Some(page) = rx.next().await {
+                    debug!("request {page:?}");
+                    // TODO error handling and/or (better?) assume always valid via validating base_url first
+                    let Ok(url) = req.at(page.offset, page.size, page.search) else {
+                        continue;
+                    };
 
-                // Resolve the message
-                let response = if let Some(response) = cache.get(&url) {
-                    response.clone()
+                    // Resolve the message
+                    let response = if let Some(response) = cache.get(&url) {
+                        response.clone()
+                    } else {
+                        let response: SubsonicResponseOuter = client
+                            .get(url.clone())
+                            .send()
+                            .await
+                            .inspect_err(|e| error!("oh nose {e:?}"))
+                            .unwrap() // TODO this crashes on error
+                            .json()
+                            .await
+                            .unwrap();
+                        let response = response.subsonic_response;
+                        cache.insert(url, response.clone());
+                        response
+                    };
+
+                    response_state.set(Some(response));
                 } else {
-                    let response: SubsonicResponseOuter = client
-                        .get(url.clone())
-                        .send()
-                        .await
-                        .inspect_err(|e| error!("oh nose {e:?}"))
-                        .unwrap() // TODO this crashes on error
-                        .json()
-                        .await
-                        .unwrap();
-                    let response = response.subsonic_response;
-                    cache.insert(url, response.clone());
-                    response
-                };
-
-                response_state.set(Some(response));
-            } else {
-                break;
+                    break;
+                }
             }
         }
     });
@@ -227,41 +257,6 @@ pub fn Udrome() -> Element {
         }
     });
 
-    // handler defined as closure so we can have comments (rsx format removes them)
-    let onkeydown = move |ev: KeyboardEvent| {
-        let key = ev.key();
-        let code = ev.code();
-        let mofos = ev.modifiers();
-        let mut handled = false;
-        // TODO howto i18n search?
-        // TODO properly handle Mac (meta = cmd) vs non-Mac
-        // there is Key::Find but it doesn't seem to trigger
-        if key == Key::Character("f".to_string()) && (mofos.ctrl() || mofos.meta()) {
-            if let Some(search_field) = search_field.as_ref() {
-                if let Err(e) = search_field.focus() {
-                    error!("{e:?}");
-                }
-                handled = true;
-            }
-        } else if key == Key::Escape {
-            // clear search input
-            if let Some(search_field) = search_field.as_ref() {
-                search_field.set_value("");
-            }
-            // force search action update
-            debounce.action("".to_string());
-            // change focus to app
-            // TODO reset scroll position
-            if let Some(app) = app_container.as_ref() {
-                app.focus().inspect_err(|e| error!("{e:?}")).ok();
-            }
-            handled = true;
-        }
-        if handled {
-            ev.prevent_default();
-        }
-    };
-
     // TODO https://crates.io/crates/dioxus-free-icons
     // TODO this allocates a lot of Vec, we *should* be able to map things instead,
     // figure out how to MappedResult<Iterator<Item = SongInfo>>
@@ -278,7 +273,7 @@ pub fn Udrome() -> Element {
                     offset: paginator.read().offset as usize,
                     content,
                     onclick: move |song: SongInfo| {
-                        let bu = base_url.as_str();
+                        let bu = base_url2.as_str();
                         let stream_url = song.stream_url(bu);
                         debug!("play {stream_url}");
                         debug!("{:?}", song.cover_art_url(bu));
@@ -296,8 +291,6 @@ pub fn Udrome() -> Element {
     // TODO why do we need overflow-y-hidden ??
     rsx! {
         div {
-            tabindex: 0,
-            onkeydown,
             id: "udrome",
             class: "sm:ml-64 h-screen overflow-y-hidden",
             onmounted: move |ev| {
