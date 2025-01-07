@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use subsonic_types::response::{Child as Song, Response, ResponseBody};
 
-use crate::model::SongInfo;
+use crate::model::{globals::SONG, SongInfo};
 
 #[component]
 pub fn SearchResult(
@@ -9,13 +9,23 @@ pub fn SearchResult(
     onclick: EventHandler<SongInfo>,
     offset: usize,
 ) -> Element {
+    let cur_song = SONG.read();
     let content_lock = content.read();
     let song_rows = content_lock.iter().enumerate().map(|(idx, song)| {
         to_owned![song];
+        let row_is_current_song = cur_song
+            .as_ref()
+            .map(|s| s.id == song.id)
+            .unwrap_or_default();
+        let class = if row_is_current_song {
+            "cursor-pointer hover:bg-base-200 font-bold text-slate-100"
+        } else {
+            "cursor-pointer hover:bg-base-200"
+        };
         rsx! {
             tr {
                 key: "{song.id}",
-                class: "cursor-pointer hover:bg-base-200",
+                class,
                 onclick: move |_| onclick.call(song.clone()),
                 td { "{ idx + offset + 1 }" }
                 td { "{ song.artist.clone().unwrap_or_default() }" }
