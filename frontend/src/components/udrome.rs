@@ -303,8 +303,40 @@ pub fn Udrome() -> Element {
     };
 
     // TODO https://crates.io/crates/dioxus-free-icons
-    // TODO why do we need overflow-y-hidden ??
+    // TODO this allocates a lot of Vec, we *should* be able to map things instead,
+    // figure out how to MappedResult<Iterator<Item = SongInfo>>
+    let songs = match response_memo.read().as_ref().map(|res| &res.body) {
+        None => rsx! { "loading or something" },
+        Some(ResponseBody::SearchResult3(res)) => {
+            let content = res
+                .song
+                .iter()
+                .map(|song| SongInfo(song.clone()))
+                .collect::<Vec<_>>();
+            rsx! {
+                SearchResult {
+                    offset: paginator.read().offset as usize,
+                    content,
+                    onclick: move |song: SongInfo| {
+                        let base_url = base_url.read();
+                        let bu = base_url.as_str();
+                        let stream_url = song.stream_url(bu);
+                        debug!("play {stream_url}");
+                        debug!("{:?}", song.cover_art_url(bu));
+                        if let Some(cover) = song.cover_art_url(bu) {
+                            debug!("ca {cover}");
+                        }
+                        title.set(song.title_with_optional_artist());
+                        song_url.set(stream_url);
+                        *SONG.write() = Some(song);
+                    },
+                }
+            }
+        }
+        Some(_) => rsx! { "wrong response" },
+    };
 
+    // TODO why do we need overflow-y-hidden ??
     rsx! {
         div {
             tabindex: 0,
@@ -357,22 +389,7 @@ pub fn Udrome() -> Element {
                 }
             }
 
-            SearchResult {
-                content: response_state,
-                onclick: move |song: SongInfo| {
-                    let base_url = base_url.read();
-                    let bu = base_url.as_str();
-                    let stream_url = song.stream_url(bu);
-                    debug!("play {stream_url}");
-                    debug!("{:?}", song.cover_art_url(bu));
-                    if let Some(cover) = song.cover_art_url(bu) {
-                        debug!("ca {cover}");
-                    }
-                    title.set(song.title_with_optional_artist());
-                    song_url.set(stream_url);
-                    *SONG.write() = Some(song);
-                },
-            }
+            {songs}
 
             Player {
                 url: song_url,
