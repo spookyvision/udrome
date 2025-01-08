@@ -2,3 +2,4 @@
 /.envrc
 /.vscode
 /udrome.toml
+.DS_Store

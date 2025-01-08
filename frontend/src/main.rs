@@ -32,7 +32,8 @@ enum Route {
     Playlist { id: i32 },
 }
 
-const FAVICON: Asset = asset!("/assets/favicon.ico");
+const FAVICON_ICO: Asset = asset!("/assets/favicon.ico");
+const FAVICON_PNG: Asset = asset!("/assets/favicon-96x96.png");
 const MAIN_CSS: Asset = asset!("/assets/styling/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
@@ -75,18 +76,26 @@ fn App() -> Element {
         let body = gloo::utils::body();
         let cb =
             Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
-                debug!("body okd {ev:?}");
+                debug!("body onkeydown {ev:?}");
             });
         body.set_onkeydown(Some(cb.as_ref().unchecked_ref()));
         cb.forget();
     });
 
+    // <link rel="shortcut icon" href="/favicon.ico" />
     rsx! {
-        document::Link { rel: "icon", href: FAVICON }
+        document::Link {
+            rel: "icon",
+            r#type: "image/png",
+            sizes: "96x96",
+            href: FAVICON_PNG,
+        }
+        document::Link { rel: "shortcut icon", href: FAVICON_ICO }
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: TAILWIND_CSS }
 
         // TODO onkeydown only fires after clicking the same menu item twice?
+        // TODO stop event bubbling, unlike in the previous div? What gives?
         div {
             class: "app-wrapper h-screen",
             tabindex: 1,

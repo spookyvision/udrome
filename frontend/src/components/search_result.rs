@@ -1,7 +1,7 @@
-use dioxus::prelude::*;
+use dioxus::{prelude::*, web::WebEventExt};
+use dioxus_logger::tracing::debug;
 
 use crate::model::{globals::SONG, SongInfo};
-
 #[component]
 pub fn SearchResult(
     content: ReadOnlySignal<Vec<SongInfo>>,
@@ -25,6 +25,24 @@ pub fn SearchResult(
             tr {
                 key: "{song.id}",
                 class,
+                draggable: true,
+                ondragstart: move |ev| {
+                    debug!("ondragstart {ev:?}");
+                    if let Some(wev) = ev.try_as_web_event() {
+                        debug!("haev {wev:?}");
+                        if let Some(dt) = wev.data_transfer() {
+                            debug!("haev {dt:?}");
+                            dt.set_drop_effect("move");
+                            dt.set_effect_allowed("move");
+                        }
+                    }
+                },
+                ondrop: move |ev| {
+                    ev.prevent_default();
+                },
+                ondragover: move |ev| {
+                    ev.prevent_default();
+                },
                 onclick: move |_| onclick.call(song.clone()),
                 td { "{ idx + offset + 1 }" }
                 td { "{ song.artist.clone().unwrap_or_default() }" }
