@@ -1,0 +1,2 @@
+#!/bin/sh
+BACKEND_URL=http://localhost:3000 dx serve
