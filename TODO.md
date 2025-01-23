@@ -17,6 +17,10 @@
         - [ ] auto backup DB for undo
 
 ## frontend
+- [ ] full player ;<
+    - replayGain
+    - gapless
+    - less bugs
 - [ ] mobile layout
 - [ ] i18n
 - [ ] a11y
