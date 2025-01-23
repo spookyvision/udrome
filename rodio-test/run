@@ -1,0 +1,4 @@
+#!/bin/sh
+reset
+#RUST_LOG=warn,rodio_test=debug cargo run -- ~/tmp/eMusic/Shpongle/Nothing\ Lasts,\ But\ Nothing\ Is\ Lost/Nothing\ Lasts,\ But\ Nothing\ Is\ Lost_Shpongle_?_*
+RUST_LOG=warn,rodio_test=debug cargo run -- http://localhost:3000/rest/stream.view\?id\=1330 http://localhost:3000/rest/stream.view\?id\=1327
