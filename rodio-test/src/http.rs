@@ -1,8 +1,15 @@
 use std::io::{BufRead, Cursor, Read, Seek};
 
+#[derive(Debug, Clone)]
 pub struct SeekRequest {
     url: String,
     cursor: Option<Cursor<Vec<u8>>>,
+}
+
+impl AsRef<str> for SeekRequest {
+    fn as_ref(&self) -> &str {
+        &self.url
+    }
 }
 
 impl SeekRequest {

@@ -1,6 +1,10 @@
 use std::{
     io,
-    sync::mpsc::{Receiver, SyncSender},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        mpsc::{Receiver, SyncSender},
+        Arc, Mutex,
+    },
     thread::spawn,
     time::Duration,
 };
@@ -9,11 +13,12 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
+    prelude::CrosstermBackend,
     style::{Color, Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph, Widget},
-    DefaultTerminal, Frame,
+    DefaultTerminal, Frame, Terminal,
 };
 use tracing::{debug, error};
 use tui_logger::{
@@ -34,36 +39,47 @@ pub enum Command {
     Play,
     Pause,
     Stop,
+    Update,
 }
 
 #[derive(Debug)]
 pub enum State {
     Pos(Duration),
+    Track(String),
     Playing,
     Paused,
     Stopped,
 }
 
+#[derive(Debug, Default, Clone)]
+struct PlaybackInfo {
+    track: String,
+    pos: u32,
+}
+
+#[derive(Debug, Default)]
+struct AppData {
+    info: Option<PlaybackInfo>,
+    exit: bool,
+}
 #[derive(Debug)]
 pub struct App {
-    counter: u8,
-    exit: bool,
+    data: Arc<Mutex<AppData>>,
     cmd_tx: SyncSender<Command>,
 }
 impl App {
-    pub fn new(counter: u8, exit: bool, cmd_tx: SyncSender<Command>) -> Self {
+    pub fn new(data: AppData, cmd_tx: SyncSender<Command>) -> Self {
         Self {
-            counter,
-            exit,
+            data: Arc::new(Mutex::new(data)),
             cmd_tx,
         }
     }
 
     pub fn new_short(cmd_tx: SyncSender<Command>) -> Self {
-        Self::new(Default::default(), Default::default(), cmd_tx)
+        Self::new(Default::default(), cmd_tx)
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Left => self.seek_back(),
@@ -77,7 +93,7 @@ impl App {
         }
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&self) -> io::Result<()> {
         match event::read()? {
             // it's important to check that the event is a key press event as
             // crossterm also emits key release and repeat events on Windows.
@@ -88,48 +104,70 @@ impl App {
         };
         Ok(())
     }
-    /// runs the application's main loop until the user quits
-    pub fn run(
-        &mut self,
-        terminal: &mut DefaultTerminal,
-        state_rx: Receiver<State>,
-    ) -> io::Result<()> {
-        let _handle = spawn(move || {
-            while let Ok(state) = state_rx.recv() {
-                match state {
-                    State::Pos(pos) => debug!("new pos {pos:?}"),
-                    State::Playing => debug!("Play"),
-                    State::Paused => debug!("Pause"),
-                    State::Stopped => debug!("Stop"),
+
+    pub fn rx_thread(&self, state_rx: Receiver<State>, terminal: Arc<Mutex<DefaultTerminal>>) {
+        let data = self.data.clone();
+        while let Ok(state) = state_rx.recv() {
+            match state {
+                State::Pos(pos) => {
+                    let secs = pos.as_secs();
+                    let mut data = data.lock().unwrap();
+                    if data.info.is_none() {
+                        data.info = Some(Default::default());
+                    }
+                    data.info.as_mut().unwrap().pos = secs as u32;
                 }
+                State::Track(track) => {
+                    let mut data = data.lock().unwrap();
+                    if data.info.is_none() {
+                        data.info = Some(Default::default());
+                    }
+                    data.info.as_mut().unwrap().track = track;
+                }
+
+                State::Playing => debug!("Play"),
+                State::Paused => debug!("Pause"),
+                State::Stopped => debug!("Stop"),
             }
-        });
-        while !self.exit {
+
+            let mut terminal = terminal.lock().unwrap();
+            if let Err(e) = terminal.draw(|frame| self.draw(frame)) {
+                error!("draw: {e:?}")
+            }
+        }
+    }
+    /// runs the application's main loop until the user quits
+    pub fn run(&self, terminal: Arc<Mutex<DefaultTerminal>>) -> io::Result<()> {
+        let mut exit = false;
+        while !exit {
+            let mut terminal = terminal.lock().unwrap();
             terminal.draw(|frame| self.draw(frame))?;
+            drop(terminal);
             self.handle_events()?;
+            let data = self.data.lock().unwrap();
+            exit = data.exit;
         }
         Ok(())
     }
-    fn exit(&mut self) {
-        self.exit = true;
+    fn exit(&self) {
+        let mut data = self.data.lock().unwrap();
+        data.exit = true;
     }
 
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
 
-    fn seek_back(&mut self) {
+    fn seek_back(&self) {
         if let Err(e) = self.cmd_tx.send(Command::SeekBack) {
             error!("{e:?}")
         }
-        self.counter = self.counter.wrapping_sub(1);
     }
 
-    fn seek_forward(&mut self) {
+    fn seek_forward(&self) {
         if let Err(e) = self.cmd_tx.send(Command::SeekForward) {
             error!("{e:?}")
         }
-        self.counter = self.counter.wrapping_add(1);
     }
 
     fn seek_back_mucho(&self) {
@@ -167,9 +205,18 @@ impl Widget for &App {
             .title_bottom(instructions.centered())
             .border_set(border::THICK);
 
+        let data = self.data.lock().unwrap();
+        let info = data.info.clone().unwrap_or_default();
+        let secs = info.pos % 60;
+        let mins = info.pos / 60;
+        let hours = info.pos / 3600;
+
+        let pos = format!("{hours:02}:{mins:02}:{secs:02}");
+
         let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.counter.to_string().yellow(),
+            info.track.white(),
+            " ".into(),
+            pos.yellow(),
         ])]);
 
         let [left, right] = Layout::horizontal([Constraint::Fill(1); 2]).areas(area);
